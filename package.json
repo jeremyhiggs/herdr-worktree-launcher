@@ -1,1 +1,14 @@
-{"name":"personal-worktrees","private":true,"type":"module","scripts":{"test":"node --test tests/personal-worktrees-*.test.mjs","test:app":"node scripts/test-app.mjs"}}
+{
+  "name": "personal-worktrees",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.6",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11 <12"
+  },
+  "scripts": {
+    "test": "node --test tests/personal-worktrees-*.test.mjs",
+    "test:app": "node scripts/test-app.mjs"
+  }
+}

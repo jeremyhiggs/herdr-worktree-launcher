@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 
 const execute = promisify(execFile);
 const launcher = resolve('scripts/test-app.mjs');
@@ -31,13 +32,14 @@ else if (args[0]==='ls') console.log(JSON.stringify({spaces:[],terminals:[]}));
     return path;
   };
   t.after(() => rm(root, { recursive: true, force: true }));
-  return { root, bin, records, run, remember };
+  return { root, bin, env, records, run, remember };
 }
 
 test('isolated launcher configures disposable discovery, fixtures, shortcut and scoped stop', async t => {
   const f = await fixture(t);
   const result = await f.run(); const root = f.remember(result.stdout);
   assert(root);
+  assert.match(result.stdout, /Stop: pnpm run test:app stop /);
   const config = JSON.parse(await readFile(join(root, 'app/mods/personal-worktrees/config.json'), 'utf8'));
   assert.equal(config.project_root, join(root, 'projects'));
   const keys = JSON.parse(await readFile(join(root, 'app/keys.json'), 'utf8'));
@@ -78,4 +80,11 @@ test('failed overlay opening stops only the newly prepared app and core and reta
   assert(records.some(r => r.args.join(' ') === 'do app.quit'));
   assert(records.some(r => r.binary === 'hc' && r.args.join(' ') === 'server stop'));
   assert(records.every(r => r.env.HERDR_APP_HOME === join(root, 'app')));
+});
+
+test('direct launcher invocation rejects Node older than 24 before starting any app', async t => {
+  const f = await fixture(t);
+  const code = `Object.defineProperty(process.versions, 'node', { value: '22.0.0' }); await import(${JSON.stringify(pathToFileURL(launcher).href)});`;
+  await assert.rejects(execute(process.execPath, ['--input-type=module', '--eval', code], { env: f.env, timeout: 20000 }).then(result => { f.remember(result.stdout); return result; }), /Node.js 24 or newer/);
+  assert.deepEqual(await f.records(), []);
 });

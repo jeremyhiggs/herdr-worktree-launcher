@@ -6,6 +6,11 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 
+if (Number.parseInt(process.versions.node, 10) < 24) {
+  console.error('Node.js 24 or newer is required for the isolated test launcher.');
+  process.exit(1);
+}
+
 const execute = promisify(execFile);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const marker = '.personal-worktrees-test.json';
@@ -82,7 +87,7 @@ async function start() {
     console.log(`Configuration: ${join(mod, 'config.json')}`);
     console.log('Try demo → New branch → test/new → base available → Cmd+Enter.');
     console.log('Existing-branch choices include local available and remote origin/remote-only.');
-    console.log(`Stop: npm run test:app -- stop ${root}`);
+    console.log(`Stop: pnpm run test:app stop ${root}`);
     console.log(`Log: ${join(root, 'app.log')}`);
   } catch (error) {
     if (launched) {
@@ -106,5 +111,5 @@ try {
     } catch { throw new Error('Not an owned isolated test directory. Use the path printed by test:app.'); }
     await stop(root, metadata);
     console.log(`Stopped isolated test app/core. Test files preserved at ${root}`);
-  } else throw new Error('Usage: npm run test:app [-- stop TEST_DIRECTORY]');
+  } else throw new Error('Usage: pnpm run test:app [stop TEST_DIRECTORY]');
 } catch (error) { console.error(error.message); process.exitCode = 1; }

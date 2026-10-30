@@ -19,11 +19,12 @@ The independent-provider pass was unavailable because no separate provider CLI w
 | Herdr app | 0.1.9 |
 | herdr-core | 0.1.14 |
 | Git | 2.56.0 |
-| Node | 26.12.1 |
+| Node (latest test suite) | 24.22.1 |
+| pnpm | 11.28.6 |
 
 ## Commands and evidence
 
-`node --test tests/personal-worktrees-*.test.mjs` passed 28 tests. The first test runs failed because the new implementation modules did not exist.
+`pnpm test` passed 29 tests under Node 24.22.1. The first test runs failed because the new implementation modules did not exist.
 
 The suite uses real repositories and local bare remotes. It proves Git outcomes independently of app mocks.
 
@@ -127,12 +128,20 @@ All three code findings were resolved after review of the original snapshot. The
 
 ## Isolated test command
 
-`npm run test:app` prepares a temporary app home, core store, and two disposable Git clones. It opens Worktrees automatically.
+`pnpm run test:app` prepares a temporary app home, core store, and two disposable Git clones. It opens Worktrees automatically.
 
 The command sets `project_root` to the temporary `projects` directory and prints its configuration path and scoped stop command.
 
-Three launcher tests use real Git with stand-in app/core executables. They cover environment isolation, branch fixtures, shortcut installation, scoped shutdown, and startup failure cleanup.
+Four launcher tests use stand-in app/core executables. They cover environment isolation, real Git fixtures, shortcut installation, scoped shutdown, startup failure cleanup, and rejection of unsupported Node versions.
 
 A real native smoke test passed startup, the module check, empty app/core checks, automatic overlay opening, and scoped shutdown.
 
 The launcher preserves its files and log after shutdown. This test did not add physical keyboard or mouse acceptance evidence.
+
+## Development tooling
+
+The repository pins pnpm 11.28.6 and requires pnpm 11.x with Node 24 or newer. Strict engine validation is enabled.
+
+Clean unfrozen and frozen pnpm installs passed. Temporary incompatible-engine fixtures rejected both Node and pnpm requirements before script execution.
+
+Direct launcher invocation also rejects a reported Node version below 24 before it starts an app or creates test directories.

@@ -13,10 +13,19 @@ The supplied shortcut is **Cmd+Shift+G**. Installation does not change your keyb
 
 ## Development
 
+Development requires Node **24 or newer** and **pnpm 11.x**. The repository pins pnpm 11.28.6 and enforces both engine requirements.
+
+With nvm, select Node 24:
+
+```sh
+nvm use
+pnpm install --frozen-lockfile
+```
+
 Open an isolated test window:
 
 ```sh
-npm run test:app
+pnpm run test:app
 ```
 
 The command copies the current mod and creates two disposable repositories: `demo` and `other-demo`.
@@ -32,7 +41,7 @@ For **Existing branch**, select local `available` or remote `origin/remote-only`
 The terminal also prints a stop command:
 
 ```sh
-npm run test:app -- stop /path/printed/by/the/launcher
+pnpm run test:app stop /path/printed/by/the/launcher
 ```
 
 The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
@@ -52,7 +61,7 @@ Discovery searches below this directory. Build directories, ignored repositories
 Run the tests with Node:
 
 ```sh
-npm test
+pnpm test
 ```
 
 Run the native module check:
