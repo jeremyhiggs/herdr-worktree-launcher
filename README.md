@@ -13,6 +13,42 @@ The supplied shortcut is **Cmd+Shift+G**. Installation does not change your keyb
 
 ## Development
 
+Open an isolated test window:
+
+```sh
+npm run test:app
+```
+
+The command copies the current mod and creates two disposable repositories: `demo` and `other-demo`.
+
+It uses the installed Herdr app/core binaries with a temporary home, app configuration, core session, and XDG directories.
+
+Worktrees opens automatically. Cmd+Shift+G applies only to this test window. The terminal prints the discovery root and configuration path.
+
+For **New branch**, select `demo`, enter `test/new`, and explicitly select `available` as the base.
+
+For **Existing branch**, select local `available` or remote `origin/remote-only`. Both repositories contain these choices.
+
+The terminal also prints a stop command:
+
+```sh
+npm run test:app -- stop /path/printed/by/the/launcher
+```
+
+The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
+
+Repository discovery reads `<app-home>/mods/personal-worktrees/config.json`:
+
+```json
+{
+  "project_root": "/absolute/path/to/projects"
+}
+```
+
+The test command sets `project_root` to `<test-directory>/projects`. Normal installation uses your own absolute directory, with no fallback to `~/Documents/Code`.
+
+Discovery searches below this directory. Build directories, ignored repositories, bare repositories, and duplicate linked worktrees remain excluded.
+
 Run the tests with Node:
 
 ```sh

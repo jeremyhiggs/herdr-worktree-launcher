@@ -1,1 +1,1 @@
-{"name":"personal-worktrees","private":true,"type":"module","scripts":{"test":"node --test tests/personal-worktrees-*.test.mjs"}}
+{"name":"personal-worktrees","private":true,"type":"module","scripts":{"test":"node --test tests/personal-worktrees-*.test.mjs","test:app":"node scripts/test-app.mjs"}}

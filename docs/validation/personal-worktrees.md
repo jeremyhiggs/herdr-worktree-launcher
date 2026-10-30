@@ -23,7 +23,7 @@ The independent-provider pass was unavailable because no separate provider CLI w
 
 ## Commands and evidence
 
-`node --test tests/personal-worktrees-*.test.mjs` passed 25 tests. The first test runs failed because the new implementation modules did not exist.
+`node --test tests/personal-worktrees-*.test.mjs` passed 28 tests. The first test runs failed because the new implementation modules did not exist.
 
 The suite uses real repositories and local bare remotes. It proves Git outcomes independently of app mocks.
 
@@ -124,3 +124,15 @@ The regressions failed before their fixes. The slow-probe regression also verifi
 Additional review coverage verifies changed-checkout refusal, journal-clear failure recovery, and explicit retry after a failure without artifacts.
 
 All three code findings were resolved after review of the original snapshot. The review did not independently reassess the later fixes.
+
+## Isolated test command
+
+`npm run test:app` prepares a temporary app home, core store, and two disposable Git clones. It opens Worktrees automatically.
+
+The command sets `project_root` to the temporary `projects` directory and prints its configuration path and scoped stop command.
+
+Three launcher tests use real Git with stand-in app/core executables. They cover environment isolation, branch fixtures, shortcut installation, scoped shutdown, and startup failure cleanup.
+
+A real native smoke test passed startup, the module check, empty app/core checks, automatic overlay opening, and scoped shutdown.
+
+The launcher preserves its files and log after shutdown. This test did not add physical keyboard or mouse acceptance evidence.
