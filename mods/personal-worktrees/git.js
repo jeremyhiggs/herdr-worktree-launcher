@@ -13,7 +13,10 @@ export function parseWorktrees(text) {
 export function createGit(runner, userHome) {
   async function command(program, args, cwd) {
     const r = await runner(program, args, cwd ? { cwd } : {});
-    if (r.code !== 0) throw new Error((r.stderr || r.stdout || `${program} failed (${r.code})`).trim());
+    if (r.code !== 0) {
+      const error = new Error((r.stderr || r.stdout || `${program} failed (${r.code})`).trim());
+      error.code = r.code; error.program = program; throw error;
+    }
     return r.stdout ?? '';
   }
   const git = (cwd, args) => command('git', ['--no-optional-locks', ...args], cwd);
@@ -60,7 +63,11 @@ export function createGit(runner, userHome) {
       const candidate = parent(marker);
       if (!clean(candidate) || await ignored(candidate, root)) continue;
       let repo;
-      try { repo = await identity(candidate); } catch { continue; }
+      try { repo = await identity(candidate); }
+      catch (e) {
+        if (e.code === 128 || e.message === 'Bare repositories are unavailable.') continue;
+        throw e;
+      }
       if (repo.path === root || !inside(repo.path, root)) continue;
       const label = repo.path.slice(root.length + (root === '/' ? 0 : 1));
       if (label.split('/').some(p => pruned.includes(p)) || await ignored(repo.path, root)) continue;
@@ -103,7 +110,6 @@ export function createGit(runner, userHome) {
   }
   async function validateDestination(path) {
     if (await occupied(path)) throw new Error(`Destination is occupied: ${path}`);
-    // Resolve each existing ancestor before mkdir; reject symlinked worktree-store components.
     const home = await real(userHome);
     let p = userHome;
     for (const component of path.slice(userHome.length + 1).split('/').slice(0, -1)) {
@@ -139,7 +145,7 @@ export function createGit(runner, userHome) {
         const tracking = (await git(path, ['for-each-ref', '--format=%(upstream)', `refs/heads/${name}`])).trim();
         if (actual.id === project.id && actual.top === await real(path) && tracking === upstream) return { kind: 'created', path, request };
       }
-      const branch = (await git(project.path, ['for-each-ref', '--format=%(refname)', `refs/heads/${name}`])).trim();
+      const branch = (await git(project.path, ['for-each-ref', '--format=%(refname)', `refs/heads/${name}`])).trim().split('\n').includes(`refs/heads/${name}`);
       if (row || await occupied(path) || (request.action === 'new' || request.remote) && branch) return { kind: 'partial', path, error: `Incomplete operation: ${branch ? 'branch already exists; ' : ''}${row || await occupied(path) ? 'destination or worktree exists; ' : ''}inspect and repair it manually.`, request };
       return { kind: 'absent', path, request };
     } catch (e) { return { kind: 'partial', path: request.path, request, error: `Cannot reconcile operation: ${e.message}. Inspect Git before retrying.` }; }
@@ -148,6 +154,10 @@ export function createGit(runner, userHome) {
     let error = '';
     try {
       await validateProject(request.project);
+      const refs = await choices(request.project);
+      const selected = refs.find(r => r.ref === request.ref);
+      if (!selected || request.action === 'existing' && selected.reason) throw new Error(selected?.reason || 'Selected ref is no longer available.');
+      if (request.action === 'new' && refs.some(r => r.name === request.name)) throw new Error(`A local or fetched remote branch named ${request.name} already exists.`);
       await validateDestination(request.path);
       await command('/bin/mkdir', ['-p', parent(request.path)]);
       await validateDestination(request.path);

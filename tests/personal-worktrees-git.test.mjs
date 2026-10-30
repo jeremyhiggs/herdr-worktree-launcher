@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, realpath, rename, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, execFile } from 'node:child_process';
@@ -124,4 +124,38 @@ test('failure/timeout after mutation reconciles checkout or branch artifact with
     if (mode !== 'branch-only') assert.equal(git(result.path, 'rev-parse', 'HEAD'), req.commit);
     else assert.match(result.error, /branch.*exists/i);
   }
+});
+
+test('canonical revalidation rejects a project replaced by an outside symlink and symlinked destination ancestors', async t => {
+  const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
+  await rename(p, join(f.dir, 'outside')); await symlink(join(f.dir, 'outside'), p);
+  await assert.rejects(f.api.prepare({ project, action: 'new', ref: 'refs/heads/main', name: 'escape' }), /identity|project/i);
+  const q = await f.repo('trap'); const trap = await f.project(q);
+  await mkdir(join(f.home, '.herdr', 'worktrees'), { recursive: true });
+  await symlink(f.dir, join(f.home, '.herdr', 'worktrees', 'trap'));
+  await assert.rejects(f.api.prepare({ project: trap, action: 'new', ref: 'refs/heads/main', name: 'escape' }), /symlink/);
+  await mkdir(join(f.dir, 'unreadable')); await chmod(join(f.dir, 'unreadable'), 0);
+  t.after(() => chmod(join(f.dir, 'unreadable'), 0o700).catch(() => {}));
+  await assert.rejects(f.api.discover({ project_root: join(f.dir, 'unreadable') }), /unreadable/);
+});
+
+test('discovery reports find failures and Git timeouts rather than returning a partial list', async t => {
+  const f = await fixture(t); await f.repo('app');
+  for (const program of ['/usr/bin/find', 'git']) {
+    const api = createGit(async (command, args, options) => {
+      if (command === program) throw new Error('injected output/time limit');
+      return runner(command, args, options);
+    }, f.home);
+    await assert.rejects(api.discover({ project_root: f.root }), /limit/);
+  }
+});
+
+test('a ref namespace conflict reports no artifact when only a longer branch already exists', async t => {
+  const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
+  git(p, 'branch', 'feature/existing');
+  const request = await f.api.prepare({ project, action: 'new', ref: 'refs/heads/main', name: 'feature' });
+  const result = await f.api.create(request);
+  assert.equal(result.kind, 'absent');
+  assert.match(result.error, /cannot lock ref|exists/);
+  assert.equal(git(p, 'rev-parse', 'refs/heads/feature/existing'), git(p, 'rev-parse', 'HEAD'));
 });

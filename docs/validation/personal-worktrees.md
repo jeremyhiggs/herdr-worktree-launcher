@@ -1,0 +1,126 @@
+# Personal Worktrees validation
+
+Date: 2026-10-30.
+
+Source implementation is complete. Full interactive acceptance remains incomplete because native keyboard and mouse automation was unavailable.
+
+## Scope and versions
+
+The user selected this standalone `herdr-worktree` repository after review of the plan in `herdr-worktree-workflows`.
+
+The user selected source and isolated validation only, with a supplied Cmd+Shift+G binding. No live installation or keybinding change occurred.
+
+The plan review covered coherence, feasibility, design, scope, and adversarial assumptions. It produced no actionable findings.
+
+The independent-provider pass was unavailable because no separate provider CLI was installed.
+
+| Component | Version |
+| --- | --- |
+| Herdr app | 0.1.9 |
+| herdr-core | 0.1.14 |
+| Git | 2.56.0 |
+| Node | 26.12.1 |
+
+## Commands and evidence
+
+`node --test tests/personal-worktrees-*.test.mjs` passed 25 tests. The first test runs failed because the new implementation modules did not exist.
+
+The suite uses real repositories and local bare remotes. It proves Git outcomes independently of app mocks.
+
+`herdr-app check <copied-mod-directory>` passed. The initial check exposed unsupported input focus metadata, which the implementation removed.
+
+`just test` passed in the separate original workflow repository. Its original source files remained unchanged.
+
+No lint or typecheck command is configured. Native module loading and the Node test suite supply the code checks.
+
+The isolated app used a scratch `HOME`, `HERDR_APP_HOME`, `HC_SESSION`, and all four XDG directories.
+
+The first session name exceeded the macOS socket-path limit. A shorter test-only session name resolved that problem.
+
+The scratch app used the existing `hc` binary through its own `core` configuration. The live core remained separate.
+
+Before creation, `herdr-app ls` and `hc ls` both reported empty lists. The mod reported the scratch home through `home()`.
+
+A private test harness called the real model from the native overlay. It used the app's real commands and observed real spaces and panes.
+
+These calls prove native app integration. They do not prove physical keyboard routing, mouse selection, or the shortcut.
+
+The harness completed four creation scenarios: local existing branch, remote existing branch, new local base, and new remote base.
+
+Each scenario verified the resulting checkout HEAD, attached branch, upstream, active space, focused shell, and live pane directory.
+
+An injected opening error preserved the created checkout and exposed recovery. A retry selected a precreated space with its shell in a subdirectory.
+
+The retry created no duplicate space. No agent ran in the isolated core.
+
+The test app and its core stopped after evidence capture. Task-owned Git fixtures were removed. Screenshots and JSON observations remain in scratch storage.
+
+Scratch evidence is under `/private/tmp/personal-worktrees-runtime`. Screenshots remain outside tracked source.
+
+| Screenshot | Observation |
+| --- | --- |
+| `01-config-error.png` | Missing configuration, visible error, disabled Create |
+| `02-new-preview.png` | New branch form and scratch destination preview |
+| `03-new-local.png` | Selected checkout space and normal shell |
+| `05-existing-preview.png` | Existing branch form |
+| `08-recover.png` | Created checkout preserved after injected opening error |
+| `09-recovered.png` | Selected existing space with a subdirectory shell |
+
+## Acceptance matrix
+
+“Blocked” means that a required interactive evidence layer is incomplete, even where fixtures passed.
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| V01 | Passed | Discovery test preserves distinct root-relative names |
+| V02 | Passed | Real discovery excludes linked duplicates, ignored/build/bare/JJ-only entries |
+| V03 | Blocked | Missing error rendered; malformed/relative/unreadable fixtures pass; other error screens need interaction |
+| V04 | Blocked | Empty discovery fixture passes; physical Refresh interaction remains unverified |
+| V05 | Passed | Local branch/tag collision uses the branch with the correct commit and attached HEAD |
+| V06 | Passed | Checked-out primary and linked branches carry their checkout paths |
+| V07 | Passed | Two remote identities remain distinct; symbolic remote HEAD is absent |
+| V08 | Passed | Real local creation preserves tip and upstream; isolated local flow passed |
+| V09 | Passed | Real remote creation tracks the selected remote; isolated remote flow passed |
+| V10 | Passed | Remote choices with matching local names are unavailable |
+| V11 | Passed | Empty, invalid, local, and fetched-remote name conflicts fail before mutation |
+| V12 | Passed | A checked-out base can create a new branch |
+| V13 | Passed | Local-base fixture and isolated app start from the selected older commit |
+| V14 | Passed | Remote-base fixture and isolated app preserve the selected commit and unset upstream |
+| V15 | Blocked | Out-of-order model test passes; physical project switching remains unverified |
+| V16 | Passed | Real stale-ref, identity, eligibility, and model preparation failures prevent creation |
+| V17 | Passed | Real metacharacter paths and branch names remain literal argv values |
+| V18 | Passed | Real slug/basename/occupied-path collisions and symlink ancestors are rejected |
+| V19 | Blocked | Double-submit model test proves one mutation; repeated physical input remains unverified |
+| V20 | Blocked | Cancel/pending-close model tests pass; native Escape routing remains unverified |
+| V21 | Passed | Isolated opening fault preserves checkout; retry succeeds; slow-probe deadline prevents late app commands |
+| V22 | Passed | Real app selects the precreated subdirectory shell; model excludes nested and remote repositories |
+| V23 | Passed | Real outside-root project symlink is rejected after canonical revalidation |
+| V24 | Passed | Injected real Git nonzero/timeout outcomes reconcile checkout and branch-only artifacts |
+| V25 | Passed | Real dirty-checkout snapshots preserve HEAD, index diff, tracked and untracked contents |
+| V26 | Passed | Real fixture advances the selected ref before submission and uses the new commit |
+| V27 | Blocked | Both forms render; actual keyboard, mouse, focus traversal, and scrolling need acceptance |
+| V28 | Passed | Isolated app uses copied source without Launcher, Worktrunk, Node, or old server calls |
+| V29 | Passed | Reinstall preserves config; documented removal preserves its backup, unrelated files, and recovery data |
+| V30 | Passed | Original workflow fixture suite passes in its unchanged source repository |
+
+## Remaining acceptance
+
+Run both forms with physical keyboard and mouse input in an isolated app window. Exercise Tab/Shift+Tab, Enter, Cmd+Enter, Escape, scrolling, Refresh, and error states.
+
+Native accessibility inspection stalled and returned only window controls. It supplied no reliable form-input automation.
+
+Full completion requires this interactive evidence. Module checks, model tests, screenshots, and programmatic app integration do not replace it.
+
+## Review fixes
+
+The final code review found three defects. Each fix has regression evidence and a passing native module check.
+
+- Re-selecting the current action could clear visible input while the model retained it. Input reset now requires an actual action change.
+- Git prefix matching could confuse a longer branch with an incomplete artifact. Recovery now requires exact ref equality.
+- A slow identity probe could exceed the opening deadline and send a late app command. One cancellable deadline now bounds the operation.
+
+The regressions failed before their fixes. The slow-probe regression also verifies that a late result sends no app command.
+
+Additional review coverage verifies changed-checkout refusal, journal-clear failure recovery, and explicit retry after a failure without artifacts.
+
+All three code findings were resolved after review of the original snapshot. The review did not independently reassess the later fixes.

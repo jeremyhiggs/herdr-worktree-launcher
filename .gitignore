@@ -1,0 +1,4 @@
+mods/personal-worktrees/config.json
+*.png
+mods/personal-worktrees/gpui-kit.d.ts
+mods/personal-worktrees/jsconfig.json

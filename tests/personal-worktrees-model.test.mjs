@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { WorktreeModel, openCheckout } from '../mods/personal-worktrees/model.js';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+const noTimeout = () => ({ promise: new Promise(() => {}), cancel: () => {} });
 const a = { id: 'A', path: '/projects/A', label: 'A', basename: 'A' };
 const b = { id: 'B', path: '/projects/B', label: 'B', basename: 'B' };
 const ref = { ref: 'refs/heads/main', name: 'main', label: 'main · local', reason: '' };
@@ -24,7 +25,8 @@ test('late choices and closed overlays cannot replace current form; selections r
   await f.model.refresh(); const first = f.model.selectProject(a); await f.model.selectProject(b);
   f.model.setName('branch'); f.model.selectRef(ref); late.resolve([{ ...ref, name: 'wrong' }]); await first;
   assert.equal(f.model.project, b); assert.equal(f.model.refs[0].name, 'main');
-  f.model.setAction('existing'); assert.equal(f.model.ref, null); assert.equal(f.model.name, '');
+  assert.equal(f.model.setAction('new'), false); assert.equal(f.model.name, 'branch'); assert.equal(f.model.ref, ref);
+  assert.equal(f.model.setAction('existing'), true); assert.equal(f.model.ref, null); assert.equal(f.model.name, '');
   const closed = deferred(); f.model.git.choices = () => closed.promise;
   const load = f.model.selectProject(a); assert.equal(f.model.close(), true); closed.resolve([ref]); await load;
   assert.equal(f.model.refs.length, 0);
@@ -79,7 +81,7 @@ test('space matching uses live checkout identity, ignores remote and nested repo
     panes: [{ pane: 'n', tab: 'nested-tab', cwd: '/worktree/nested', terminal: 'tn', program: { shell: true } }, { pane: 'r', tab: 'remote-tab', cwd: '/worktree', terminal: 'tr', program: { shell: true } }, { pane: 'c', tab: 'correct-tab', cwd: '/worktree/subdir', terminal: 'tc', program: { shell: true }, focused: false }],
   };
   const git = { identity: async p => ({ top: p.includes('nested') ? '/worktree/nested' : '/worktree', id: p.includes('nested') ? 'B' : 'A' }) };
-  await openCheckout(request, git, { snapshot: () => state, pause: async () => {}, now: () => 0, run: (name, args) => {
+  await openCheckout(request, git, { snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0, run: (name, args) => {
     calls.push([name, args]);
     if (name === 'space.select') state.spaces.find(s => s.id === args.id).active = true;
     if (name === 'pane.focus') state.panes.find(p => p.pane === args.pane).focused = true;
@@ -90,7 +92,53 @@ test('space matching uses live checkout identity, ignores remote and nested repo
 test('space creation is unnamed, starts a shell, and requires observed cwd and focus', async () => {
   let time = 0; const calls = [];
   await assert.rejects(openCheckout({ path: '/worktree', project: { id: 'A' } }, { identity: async () => ({ id: 'A', top: '/worktree' }) }, {
-    snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => time, pause: async () => { time += 1000; },
+    snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => time, pause: async () => { time += 1000; }, timeout: noTimeout,
   }), /unconfirmed/i);
   assert.deepEqual(calls, [['space.new', { folder: '/worktree' }]]);
+});
+
+test('opening expires during a slow identity probe and never sends a late app command', { timeout: 1000 }, async () => {
+  const probe = deferred(), timeout = deferred(); const calls = [];
+  const operation = openCheckout({ path: '/worktree', project: { id: 'A' } }, { identity: () => probe.promise }, {
+    snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => 0,
+    pause: async () => {}, timeout: () => ({ promise: timeout.promise, cancel: () => {} }),
+  });
+  timeout.resolve();
+  await assert.rejects(operation, /unconfirmed/i);
+  probe.resolve({ id: 'A', top: '/worktree' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, []);
+});
+
+test('open-only retry refuses a checkout that changed after its first inspection', async () => {
+  const f = setup({ open: async () => { throw new Error('injected opening failure'); } });
+  await fill(f.model); await f.model.submit();
+  let opens = 0;
+  f.model.open = async () => { opens++; };
+  f.model.git.inspect = async request => ({ kind: 'partial', path: request.path, request, error: 'checkout changed' });
+  await f.model.openCreated(); await f.model.submit();
+  assert.equal(f.model.phase, 'partial'); assert.equal(opens, 0); assert.equal(f.mutations, 1);
+  assert.equal(f.saved.path, f.request.path);
+});
+
+test('journal-clear failure preserves open-only recovery after a successful opening', async () => {
+  const f = setup(); await fill(f.model);
+  const save = f.model.journal.save;
+  f.model.journal.save = async request => { if (request === null) throw new Error('cannot clear journal'); await save(request); };
+  await f.model.submit();
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
+  assert.equal(f.saved.path, f.request.path);
+  f.model.journal.save = save; await f.model.openCreated();
+  assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
+  assert.equal(f.opens, 2); assert.equal(f.mutations, 1);
+});
+
+test('failure without any artifact clears the journal and waits for an explicit retry', async () => {
+  let attempts = 0;
+  const f = setup({ git: { create: async request => ({ kind: ++attempts === 1 ? 'absent' : 'created', request, path: request.path, error: 'injected failure' }) } });
+  await fill(f.model); await f.model.submit();
+  assert.equal(f.model.phase, 'editing'); assert.equal(f.saved, null); assert.equal(attempts, 1);
+  assert.equal(f.opens, 0); assert.match(f.model.error, /injected failure/);
+  await f.model.submit();
+  assert.equal(f.model.phase, 'complete'); assert.equal(attempts, 2); assert.equal(f.opens, 1);
 });
