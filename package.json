@@ -1,0 +1,1 @@
+{"name":"personal-worktrees","private":true,"type":"module","scripts":{"test":"node --test tests/personal-worktrees-*.test.mjs"}}
