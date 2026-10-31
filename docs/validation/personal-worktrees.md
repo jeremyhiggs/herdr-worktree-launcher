@@ -1,6 +1,6 @@
 # Personal Worktrees validation
 
-Date: 2026-10-30.
+Date: 2026-10-31.
 
 Source implementation is complete. Full interactive acceptance remains incomplete because native keyboard and mouse automation was unavailable.
 
@@ -16,15 +16,15 @@ The independent-provider pass was unavailable because no separate provider CLI w
 
 | Component | Version |
 | --- | --- |
-| Herdr app | 0.1.9 |
-| herdr-core | 0.1.14 |
+| Herdr app | 0.1.10 |
+| herdr-core | 0.1.15 |
 | Git | 2.56.0 |
 | Node (latest test suite) | 24.22.1 |
 | pnpm | 11.28.6 |
 
 ## Commands and evidence
 
-`pnpm test` passed 29 tests under Node 24.22.1. The first test runs failed because the new implementation modules did not exist.
+`pnpm test` passed 33 tests under Node 24.22.1. The first test runs failed because the new implementation modules did not exist.
 
 The suite uses real repositories and local bare remotes. It proves Git outcomes independently of app mocks.
 
@@ -132,7 +132,7 @@ All three code findings were resolved after review of the original snapshot. The
 
 The command sets `project_root` to the temporary `projects` directory and prints its configuration path and scoped stop command.
 
-Four launcher tests use stand-in app/core executables. They cover environment isolation, real Git fixtures, shortcut installation, scoped shutdown, startup failure cleanup, and rejection of unsupported Node versions.
+Six launcher tests use stand-in app/core executables. They cover environment isolation, real Git fixtures, shortcut installation, scoped shutdown, startup failure cleanup, unsupported Node versions, personal zsh startup files, and delayed overlay rendering.
 
 A real native smoke test passed startup, the module check, empty app/core checks, automatic overlay opening, and scoped shutdown.
 
@@ -145,3 +145,35 @@ The repository pins pnpm 11.28.6 and requires pnpm 11.x with Node 24 or newer. S
 Clean unfrozen and frozen pnpm installs passed. Temporary incompatible-engine fixtures rejected both Node and pnpm requirements before script execution.
 
 Direct launcher invocation also rejects a reported Node version below 24 before it starts an app or creates test directories.
+
+## Feedback follow-up
+
+The overlay now uses a project dropdown below Search projects and a branch dropdown below its own field.
+
+For new branches, Base precedes New branch name. The name field stays disabled until a base is selected.
+
+Opening now observes the primary project space before opening the worktree space. It reuses existing project spaces, including spaces without a live terminal cwd.
+
+The native Spaces mod groups worktrees beneath the primary checkout by repository identity. No explicit parent identifier is required.
+
+Real native validation created a project space and its worktree, then reused that project for another worktree. Screenshots showed the indented child beneath its project.
+
+A later scenario exceeded the opening deadline after creating its space. Open-only recovery completed without duplicating that space.
+
+After the lookup fixes, a fresh native creation completed with six total spaces. It reused its primary project, focused the attached worktree shell, and cleared the recovery record.
+
+Native Git identity lookup took 1,291 ms across seven subprocesses. The revised lookup took 392 ms across two subprocesses.
+
+The search also checks spaces with the expected folder first. Every candidate still requires a live canonical identity match.
+
+The isolated launcher previously hid personal shell configuration by replacing HOME and XDG directories. It now restores the original environment inside zsh before loading personal startup files.
+
+A generated test-only .zshenv pins HC_SOCKET to the temporary core. App/core storage and worktree destinations remain temporary; shell history and cache use their normal locations.
+
+A real zsh probe loaded the user's ll alias and reported the same core identity as the isolated launcher. No live core was stopped or restarted.
+
+Disposable Git fixture commits explicitly disable signing. This avoids waiting on the user's signer and does not change repository or global Git configuration.
+
+The launcher also waits until Worktrees is observed after mod.open. Fresh test app state skips the first-run welcome screen.
+
+Feedback evidence remains in scratch directories. Keyboard, mouse, and shortcut acceptance is still incomplete.

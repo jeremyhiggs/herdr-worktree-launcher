@@ -32,11 +32,17 @@ The command copies the current mod and creates two disposable repositories: `dem
 
 It uses the installed Herdr app/core binaries with a temporary home, app configuration, core session, and XDG directories.
 
+Test zsh sessions load your normal startup files and use your normal shell history and cache. Herdr state and worktree destinations stay temporary.
+
 Worktrees opens automatically. Cmd+Shift+G applies only to this test window. The terminal prints the discovery root and configuration path.
 
-For **New branch**, select `demo`, enter `test/new`, and explicitly select `available` as the base.
+For **New branch**, select `demo`, explicitly select `available` as the base, and enter `test/new`.
 
 For **Existing branch**, select local `available` or remote `origin/remote-only`. Both repositories contain these choices.
+
+Projects appear in a dropdown below Search projects. Branch choices appear below their own field.
+
+The mod opens the primary checkout as a project space when needed. Herdr groups its worktree spaces beneath it.
 
 The terminal also prints a stop command:
 

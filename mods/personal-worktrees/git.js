@@ -29,9 +29,12 @@ export function createGit(runner, userHome) {
   const occupied = async path => await test('-e', path) || await test('-L', path);
   async function worktrees(path) { return parseWorktrees(await git(path, ['worktree', 'list', '--porcelain', '-z'])); }
   async function identity(path) {
-    if ((await git(path, ['rev-parse', '--is-bare-repository'])).trim() !== 'false') throw new Error('Bare repositories are unavailable.');
-    const top = await real((await git(path, ['rev-parse', '--show-toplevel'])).trim());
-    const id = await real((await git(path, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim());
+    const paths = (await git(path, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'])).trim().split('\n');
+    const [top, id] = (await command('/bin/realpath', paths)).trim().split('\n');
+    return { top, id };
+  }
+  async function projectIdentity(path) {
+    const { top, id } = await identity(path);
     const primary = (await worktrees(top))[0];
     if (!primary?.worktree || primary.bare) throw new Error('No primary checkout.');
     return { top, id, path: await real(primary.worktree) };
@@ -63,7 +66,7 @@ export function createGit(runner, userHome) {
       const candidate = parent(marker);
       if (!clean(candidate) || await ignored(candidate, root)) continue;
       let repo;
-      try { repo = await identity(candidate); }
+      try { repo = await projectIdentity(candidate); }
       catch (e) {
         if (e.code === 128 || e.message === 'Bare repositories are unavailable.') continue;
         throw e;
@@ -78,7 +81,7 @@ export function createGit(runner, userHome) {
   async function validateProject(project) {
     if (!project || !clean(project.path) || !clean(project.root)) throw new Error('Select a project.');
     const root = await rootOf({ project_root: project.root });
-    const current = await identity(project.path);
+    const current = await projectIdentity(project.path);
     if (root !== project.root || current.path !== project.path || current.top !== project.path || current.id !== project.id || !inside(current.path, root) || current.path === root || basename(current.path) !== project.basename) throw new Error('Project identity changed; Refresh and select it again.');
     if (current.path.slice(root.length + 1).split('/').some(p => pruned.includes(p)) || await ignored(current.path, root)) throw new Error('Project is now excluded; Refresh.');
     return current;

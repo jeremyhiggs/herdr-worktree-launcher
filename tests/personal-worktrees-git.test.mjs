@@ -12,7 +12,7 @@ const runner = async (command, args, options) => {
   try { const r = await execute(command, args, { ...options, maxBuffer: 8 * 1024 * 1024 }); return { code: 0, ...r }; }
   catch (e) { if (typeof e.code !== 'number') throw e; return { code: e.code, stdout: e.stdout, stderr: e.stderr }; }
 };
-const git = (cwd, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const git = (cwd, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 async function fixture(t) {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'personal-worktrees-')));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -43,6 +43,9 @@ test('discovery distinguishes basenames, prunes build/ignored/bare/JJ and dedupl
   git(a, 'worktree', 'add', join(f.root, 'linked'), 'free');
   const projects = await f.api.discover({ project_root: f.root });
   assert.deepEqual(projects.map(p => p.label), ['one/app', 'two/app']);
+  await mkdir(join(a, 'subdir'));
+  assert.deepEqual(await f.api.identity(join(a, 'subdir')), { top: a, id: join(a, '.git') });
+  assert.deepEqual(await f.api.identity(join(f.root, 'linked')), { top: join(f.root, 'linked'), id: join(a, '.git') });
   for (const config of [null, {}, { project_root: '.' }, { project_root: join(f.root, 'missing') }]) await assert.rejects(f.api.discover(config), /project_root/);
   await mkdir(join(f.dir, 'empty')); assert.deepEqual(await f.api.discover({ project_root: join(f.dir, 'empty') }), []);
 });

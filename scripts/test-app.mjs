@@ -15,11 +15,23 @@ const execute = promisify(execFile);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const marker = '.personal-worktrees-test.json';
 const environment = root => {
-  const env = { ...process.env, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'hw', XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
+  const env = { ...process.env, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'hw', HC_SOCKET: join(root, 'run/herdr-core/hw.sock'), ZDOTDIR: join(root, 'shell'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
   for (const key of ['HC_TERMINAL_ID', 'HERDR_SPACE_ID', 'HERDR_TAB_ID', 'HERDR_PANE_ID']) delete env[key];
   return env;
 };
 const run = async (root, binary, args, timeout = 30000) => (await execute(binary, args, { env: environment(root), cwd: root, timeout, maxBuffer: 8 * 1024 * 1024 })).stdout;
+async function waitForStatus(root, app, ready, message) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    let status;
+    try { status = JSON.parse(await run(root, app, ['status'], 1000)); }
+    catch { await delay(100); continue; }
+    if (status.errors?.length) throw new Error(JSON.stringify(status.errors));
+    if (ready(status)) return;
+    await delay(100);
+  }
+  throw new Error(message);
+}
 async function stop(root, binaries) {
   const errors = [];
   for (const [binary, args] of [[binaries.app, ['do', 'app.quit']], [binaries.core, ['server', 'stop']]]) {
@@ -42,10 +54,16 @@ async function start() {
   let launched = false;
   try {
     const mod = join(root, 'app/mods/personal-worktrees');
-    await Promise.all(['home', 'projects', 'config', 'data', 'state', 'run', 'app/mods/personal-worktrees'].map(path => mkdir(join(root, path), { recursive: true })));
+    await Promise.all(['home', 'shell', 'projects', 'config', 'data', 'state', 'run', 'app/mods/personal-worktrees'].map(path => mkdir(join(root, path), { recursive: true })));
+    const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+    const restore = ['HOME', 'ZDOTDIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR'].map(key => process.env[key] === undefined ? `unset ${key}` : `export ${key}=${quote(process.env[key])}`);
+    const startup = join(process.env.ZDOTDIR ?? process.env.HOME, '.zshenv');
+    restore.push(`if [[ -r ${quote(startup)} ]]; then source ${quote(startup)}; fi`, `export HC_SOCKET=${quote(join(root, 'run/herdr-core/hw.sock'))}`);
+    await writeFile(join(root, 'shell/.zshenv'), `${restore.join('\n')}\n`, { mode: 0o600 });
     for (const name of ['main.js', 'model.js', 'git.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md']) await copyFile(join(repository, 'mods/personal-worktrees', name), join(mod, name));
     await copyFile(join(mod, 'keys.json'), join(root, 'app/keys.json'));
     await writeFile(join(root, 'app/settings.json'), JSON.stringify({ core: binaries.core, telemetry: false }));
+    await writeFile(join(root, 'app/shared.json'), JSON.stringify({ 'frame.welcomed': 'skipped' }));
     await writeFile(join(mod, 'config.json'), JSON.stringify({ project_root: join(root, 'projects') }, null, 2));
 
     await run(root, 'git', ['clone', '--quiet', '--no-hardlinks', repository, join(root, 'seed')]);
@@ -64,28 +82,16 @@ async function start() {
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
       child.unref(); launched = true;
     } finally { await log.close(); }
-    const deadline = Date.now() + 30000;
-    let ready = false;
-    while (Date.now() < deadline) {
-      try {
-        const status = JSON.parse(await run(root, binaries.app, ['status'], 1000));
-        if (Array.isArray(status.errors)) {
-          if (status.errors.length) throw new Error(JSON.stringify(status.errors));
-          ready = true; break;
-        }
-      } catch { /* The window has not connected yet. */ }
-      await delay(100);
-    }
-    if (!ready) throw new Error('The isolated window did not become ready within 30 seconds.');
+    await waitForStatus(root, binaries.app, status => Array.isArray(status.errors), 'The isolated window did not become ready within 30 seconds.');
     const spaces = JSON.parse(await run(root, binaries.app, ['ls']));
     const terminals = JSON.parse(await run(root, binaries.core, ['ls']));
     if (spaces.spaces?.length !== 0 || terminals.terminals?.length !== 0) throw new Error('Expected an empty isolated app and core.');
     await run(root, binaries.app, ['do', 'mod.open', '--name', 'personal-worktrees']);
-    const status = JSON.parse(await run(root, binaries.app, ['status']));
-    if (status.errors?.length || !status.overlays?.includes('personal-worktrees')) throw new Error('The Worktrees overlay did not open.');
+    await waitForStatus(root, binaries.app, status => status.overlays?.includes('personal-worktrees'), 'The Worktrees overlay did not open within 30 seconds.');
     console.log(`Repository discovery root: ${join(root, 'projects')}`);
     console.log(`Configuration: ${join(mod, 'config.json')}`);
-    console.log('Try demo → New branch → test/new → base available → Cmd+Enter.');
+    console.log('Test zsh uses your normal startup files, history and cache; Herdr state and worktrees stay temporary.');
+    console.log('Try demo → New branch → base available → test/new → Cmd+Enter.');
     console.log('Existing-branch choices include local available and remote origin/remote-only.');
     console.log(`Stop: pnpm run test:app stop ${root}`);
     console.log(`Log: ${join(root, 'app.log')}`);

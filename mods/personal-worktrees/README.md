@@ -6,7 +6,7 @@
 - Standard macOS `find`, `realpath`, `test`, and `mkdir` utilities.
 - One absolute, readable project directory.
 
-The mod was checked with Herdr app 0.1.9 and core 0.1.14. Other versions need a fresh module check.
+The mod was checked with Herdr app 0.1.10 and core 0.1.15. Other versions need a fresh module check.
 
 ## Install
 
@@ -61,14 +61,20 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 
 1. Open **Worktrees**.
 2. Search for a project.
-3. Select a result with the mouse or Up/Down and Enter.
+3. Select a result from the project dropdown with the mouse or Up/Down and Enter.
 4. Choose **New branch** or **Existing branch**.
-5. For a new branch, enter its name and explicitly select a base.
+5. For a new branch, explicitly select a base, then enter the new name.
 6. For an existing branch, select an available local or remote branch.
 7. Read the destination.
 8. Activate **Create** or press Cmd+Enter.
 
 Enter in a search field selects a choice. It does not submit the form. Tab and Shift+Tab move between controls.
+
+The new-name field stays disabled until you select a base. Each choice list opens below its own search field.
+
+The mod reuses a space for the primary checkout or creates it first. Herdr groups the new worktree space beneath this project space.
+
+The mod requests Herdr's normal default shell, with no custom terminal command.
 
 Checked-out local branches show their checkout path. They remain available as bases for new branches.
 
@@ -95,6 +101,10 @@ Herdr limits each external command to 30 seconds and 8 MiB of output. Discovery 
 Git operations and app opening have separate outcomes. App opening must observe the correct checkout, a normal shell, and focus within ten seconds.
 
 Existing matching spaces use live shell directories. A shell in a checkout subdirectory matches. A shell in a nested repository does not match.
+
+In the isolated development launcher, zsh loads your normal startup files, history, and cache. App/core storage and worktree destinations remain temporary.
+
+The launcher pins `HC_SOCKET` to the temporary core so restored shell configuration does not route `hc` to your live session.
 
 ## Recovery
 

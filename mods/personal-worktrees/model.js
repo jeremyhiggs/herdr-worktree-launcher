@@ -6,29 +6,49 @@ export async function openCheckout(request, git, app) {
   const send = (command, args) => { check(); app.run(command, args); };
   const timer = app.timeout(10000);
   async function operation() {
+    const project = await git.identity(request.project.path);
+    check();
+    if (project.id !== request.project.id || project.top !== request.project.path) throw new Error('Project checkout identity changed; inspect Git.');
     const target = await git.identity(request.path);
     check();
     if (target.id !== request.project.id) throw new Error('Created checkout identity changed; inspect Git.');
-    async function match() {
+    async function match(identity, shell) {
       const { spaces, panes } = app.snapshot();
-      for (const space of spaces.filter(s => !s.machine)) {
+      const local = spaces.filter(s => !s.machine);
+      // Check the likely space first, then verify its live checkout like every other candidate.
+      local.sort((a, b) => Number(b.folder === identity.top) - Number(a.folder === identity.top));
+      for (const space of local) {
         const tabs = new Set(space.tabs.map(t => t.id));
-        for (const pane of panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd && p.program?.shell)) {
+        const candidates = panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd);
+        const locations = shell ? candidates.filter(p => p.program?.shell) : candidates.length ? candidates.slice(0, 1) : space.folder ? [{ cwd: space.folder }] : [];
+        for (const pane of locations) {
           check();
-          let identity;
-          try { identity = await git.identity(pane.cwd); } catch { check(); continue; }
+          let current;
+          try { current = await git.identity(pane.cwd); } catch { check(); continue; }
           check();
-          if (identity.id === target.id && identity.top === target.top) return { space, pane };
+          if (current.id === identity.id && current.top === identity.top) return { space, pane };
         }
       }
       return null;
     }
-    let found = await match();
-    if (!found) send('space.new', { folder: request.path });
+    async function ensure(identity, path, shell) {
+      let found = await match(identity, shell);
+      if (found) return found;
+      send('space.new', { folder: path });
+      while (app.now() < deadline) {
+        check();
+        found = await match(identity, shell);
+        if (found) return found;
+        await app.pause();
+      }
+      throw unconfirmed();
+    }
+    await ensure(project, request.project.path, false);
+    let found = await ensure(target, request.path, true);
     let selected = '';
     while (app.now() < deadline) {
       check();
-      found = await match();
+      found = await match(target, true);
       if (found) {
         const { space, pane } = found;
         if (selected !== pane.pane) {

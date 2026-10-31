@@ -1,5 +1,5 @@
 import { View, div } from 'gpui-kit';
-import { v_flex, h_flex, InputState, Input, Button, v_virtual_list, VirtualListScrollHandle, Scrollbar } from 'gpui-base';
+import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar } from 'gpui-base';
 import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, run, theme, props, closeOverlay } from 'herdr';
 import { createGit } from './git.js';
 import { WorktreeModel, openCheckout } from './model.js';
@@ -9,6 +9,7 @@ export default class Worktrees extends View {
     this.handle = cx.focus_handle();
     this.scroll = VirtualListScrollHandle.new();
     this.field = 'project';
+    this.openField = 'project';
     this.activeInput = 'project';
     this.index = 0;
     this.filters = { project: '', ref: '' };
@@ -21,14 +22,14 @@ export default class Worktrees extends View {
       input.on('change', (_e, cx) => {
         if (this.syncing) return;
         if (field === 'name') this.model.setName(input.value());
-        else { this.filters[field] = input.value(); this.index = 0; this.scroll.scroll_to_item(0); }
+        else { this.field = field; this.openField = field; this.filters[field] = input.value(); this.index = 0; this.scroll.scroll_to_item(0); }
         cx.notify();
       });
-      input.on('focus', (_e, cx) => { this.activeInput = field; if (field !== 'name') this.field = field; this.index = 0; cx.notify(); });
+      input.on('focus', (_e, cx) => { this.activeInput = field; this.openField = field === 'name' ? null : field; if (field !== 'name') this.field = field; this.index = 0; cx.notify(); });
       input.on('blur', (_e, cx) => { if (this.activeInput === field) this.activeInput = null; cx.notify(); });
       input.on('submit', (event, cx) => {
         if (event.secondary) this.task(cx, open => this.model.submit(open));
-        else if (field !== 'name') this.choose(this.rows()[this.index], cx);
+        else if (field !== 'name' && this.openField === field) this.choose(this.rows(field)[this.index], cx, field);
       });
     }
     const git = createGit(exec, home());
@@ -72,7 +73,7 @@ export default class Worktrees extends View {
         },
       });
       try {
-        const pending = work(open); cx.notify(); await pending;
+        const pending = work(open); if (this.model.busy) this.openField = null; cx.notify(); await pending;
         if (this.model.phase === 'complete') closeOverlay(props().overlay);
         else cx.notify();
       } catch (e) { this.model.error = String(e); cx.notify(); }
@@ -86,30 +87,44 @@ export default class Worktrees extends View {
     this.index = 0;
   }
 
-  rows() {
-    const source = this.field === 'project' ? this.model.projects : this.model.refs;
-    const filter = this.filters[this.field].toLowerCase();
+  rows(field = this.field) {
+    const source = field === 'project' ? this.model.projects : this.model.refs;
+    const filter = this.filters[field].toLowerCase();
     return source.filter(row => `${row.label} ${row.reason ?? ''}`.toLowerCase().includes(filter));
   }
 
-  emptyMessage() {
+  emptyMessage(field) {
     const m = this.model;
     if (m.phase === 'loading') return 'Loading…';
-    if (this.field !== 'project') return m.project ? 'No matching branches' : 'Select a project first';
+    if (field !== 'project') return m.project ? 'No matching branches' : 'Select a project first';
     if (m.error) return 'Fix the configuration, then Refresh.';
     return m.projects.length ? 'No matching projects' : 'No projects found';
   }
 
-  choose(row, cx) {
+  choose(row, cx, field = this.field) {
     if (!row || !this.model.editable) return;
-    if (this.field === 'project') {
+    if (field === 'project') {
       this.clearInputs();
-      this.task(cx, () => this.model.selectProject(row));
-      this.inputs[this.model.action === 'new' ? 'name' : 'ref'].focus();
+      this.showChoice('project', row.label);
+      this.openField = null;
+      this.task(cx, async () => {
+        await this.model.selectProject(row);
+        if (!this.model.closed && this.model.project?.id === row.id && this.model.phase === 'editing') this.inputs.ref.focus();
+      });
     } else {
+      if (this.model.action === 'existing' && row.reason) return;
       this.model.selectRef(row);
+      this.showChoice('ref', row.label);
+      this.openField = null;
+      if (this.model.action === 'new') this.inputs.name.focus();
       cx.notify();
     }
+  }
+
+  showChoice(field, value) {
+    this.syncing = true;
+    try { this.inputs[field].set_value(value); this.filters[field] = ''; }
+    finally { this.syncing = false; }
   }
 
   dismiss() { if (this.model.close()) closeOverlay(props().overlay); }
@@ -117,20 +132,43 @@ export default class Worktrees extends View {
 
   key(event, cx) {
     if (event.key === 'tab') {
-      const order = ['new', 'existing', 'project', ...(this.model.action === 'new' ? ['name'] : []), 'ref', 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
+      const order = ['new', 'existing', 'project', ...(this.model.project ? ['ref'] : []), ...(this.model.action === 'new' && this.model.ref ? ['name'] : []), 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
       const current = this.activeInput || order.find(key => this.buttons[key]?.is_focused());
       const step = event.modifiers.shift ? -1 : 1;
       const next = order[(Math.max(0, order.indexOf(current)) + step + order.length) % order.length];
-      (this.inputs[next] || this.buttons[next]).focus();
+      this.openField = null; (this.inputs[next] || this.buttons[next]).focus();
       cx.stop_propagation(); cx.notify();
     }
     else if (event.key === 'escape') { cx.stop_propagation(); this.dismiss(); cx.notify(); }
     else if (event.keystroke === 'cmd-enter') { cx.stop_propagation(); this.task(cx, open => this.model.submit(open)); }
     else if (['up', 'down'].includes(event.key) && ['project', 'ref'].includes(this.activeInput)) {
+      this.field = this.activeInput; this.openField = this.activeInput;
       const count = this.rows().length;
       if (count) { this.index = (this.index + (event.key === 'down' ? 1 : count - 1)) % count; this.scroll.scroll_to_item(this.index, 'center'); }
       cx.stop_propagation(); cx.notify();
     }
+  }
+
+  choiceList(field, t) {
+    const rows = this.rows(field), m = this.model, isProject = field === 'project';
+    const key = row => isProject ? row.id : row.ref;
+    const height = Math.min(220, Math.max(44, rows.length * 44));
+    const content = v_flex().w(Math.max(240, (this.width ?? 700) - 36)).h(height).bg(t.popover).border_1().border_color(t.border).rounded(6)
+      .on_mouse_down_out((_e, cx) => { if (this.openField === field) { this.openField = null; cx.notify(); } });
+    if (!rows.length) return content.child(div().p(10).text_color(t.muted).child(this.emptyMessage(field)));
+    return content.child(div().relative().size_full()
+      .child(v_virtual_list(`worktree-${field}-choices`, rows.length, 44, i => key(rows[i]), range => rows.slice(range.start, range.end).map((row, offset) => {
+        const unavailable = !isProject && m.action === 'existing' && !!row.reason;
+        const chosen = isProject ? m.project?.id === row.id : m.ref?.ref === row.ref;
+        return v_flex().h(44).px(10).justify_center().rounded(5)
+          .bg(range.start + offset === this.index ? t.selected : t.popover)
+          .text_color(unavailable ? t.dim : t.foreground)
+          .child(div().truncate().child(`${chosen ? '✓ ' : ''}${row.label}`))
+          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isProject ? row.path : unavailable ? row.reason : row.ref));
+      })).size_full().track_scroll(this.scroll).on_item_click((value, cx) => {
+        if (this.openField === field) this.choose(this.rows(field).find(row => key(row) === value), cx, field);
+      }))
+      .child(Scrollbar.vertical(`worktree-${field}-choices`).absolute().inset_0()));
   }
 
   render() {
@@ -141,38 +179,26 @@ export default class Worktrees extends View {
       .text_color(disabled ? t.dim : t.foreground).focus(s => s.border_color(t.accent))
       .on_click(action).child(text);
     const label = text => div().text_size(11).text_color(t.muted).child(text);
-    const input = field => Input.new(this.inputs[field]).disabled(!m.editable)
+    const input = field => Input.new(this.inputs[field]).disabled(!m.editable || field === 'ref' && !m.project || field === 'name' && !m.ref)
       .accessibility_label(field === 'ref' ? m.action === 'new' ? 'Base branch' : 'Existing branch' : field === 'name' ? 'New branch name' : 'Project')
       .h(34).px(10).rounded(6).border_1().border_color(this.activeInput === field ? t.accent : t.border)
       .bg(t.input).text_color(t.foreground);
-    const rows = this.rows();
-    const choiceKey = row => this.field === 'project' ? row.id : row.ref;
-    const isProject = this.field === 'project';
-    const list = rows.length ? div().relative().flex_1().min_h(0)
-      .child(v_virtual_list('worktree-choices', rows.length, 44, i => choiceKey(rows[i]), range => rows.slice(range.start, range.end).map((row, offset) => {
-        const unavailable = !isProject && m.action === 'existing' && !!row.reason;
-        const chosen = isProject ? m.project?.id === row.id : m.ref?.ref === row.ref;
-        return v_flex().h(44).px(10).justify_center().rounded(5)
-          .bg(range.start + offset === this.index ? t.selected : t.popover)
-          .text_color(unavailable ? t.dim : t.foreground)
-          .child(div().truncate().child(`${chosen ? '✓ ' : ''}${row.label}`))
-          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isProject ? row.path : unavailable ? row.reason : row.ref));
-      })).size_full().track_scroll(this.scroll).on_item_click((key, cx) => this.choose(this.rows().find(row => choiceKey(row) === key), cx)))
-      .child(Scrollbar.vertical('worktree-choices').absolute().inset_0())
-      : div().flex_1().min_h(40).p(10).text_color(t.muted).child(this.emptyMessage());
+    const picker = field => Popup.new(`worktree-${field}-picker`, div().w_full().on_click((_e, cx) => { this.field = field; this.openField = field; cx.notify(); }).child(input(field)))
+      .w_full().anchor('top_left').when(this.openField === field && m.editable, el => el.content(this.choiceList(field, t)));
     return v_flex().id('personal-worktrees').track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .on_size_change((size, cx) => { if (this.width !== size.width) { this.width = size.width; cx.notify(); } })
       .on_mouse_down('left', (_e, cx) => cx.stop_propagation())
       .size_full().p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(13)
       .child(h_flex().items_center().justify_between()
         .child(div().text_size(17).font_semibold().child('Worktrees'))
         .child(button('refresh', 'Refresh', (_e, cx) => { this.clearInputs(); this.inputs.project.set_value(''); this.filters.project = ''; this.field = 'project'; this.task(cx, () => m.refresh()); }, m.busy, false, 6)))
-      .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) this.clearInputs(); cx.notify(); }, !m.editable, m.action === action, i))))
+      .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) { this.clearInputs(); if (m.project) this.inputs.ref.focus(); } cx.notify(); }, !m.editable, m.action === action, i))))
       .child(label(`Project${m.project ? ` · ${m.project.label}` : ' · select explicitly'}`))
-      .child(input('project'))
-      .when(m.action === 'new', el => el.child(label('New branch name')).child(input('name')))
+      .child(picker('project'))
       .child(label(`${m.action === 'new' ? 'Base' : 'Branch'}${m.ref ? ` · ${m.ref.label}` : ' · select explicitly'}`))
-      .child(input('ref'))
-      .child(list)
+      .child(picker('ref'))
+      .when(m.action === 'new', el => el.child(label('New branch name')).child(input('name')))
+      .child(div().flex_1())
       .child(label('Destination'))
       .child(div().text_size(11).child(m.path || 'Select a project and branch to preview the destination.'))
       .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().text_color(t.blocked).child(m.error)))
