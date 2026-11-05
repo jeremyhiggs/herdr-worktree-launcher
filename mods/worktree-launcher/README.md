@@ -6,11 +6,39 @@
 - Standard macOS `find`, `realpath`, `test`, and `mkdir` utilities.
 - One absolute, readable project directory.
 
-The mod was checked with Herdr app 0.1.10 and core 0.1.15. Other versions need a fresh module check.
+The mod was checked with Herdr app 0.1.13 and core 0.1.18. The installer runs a fresh module check on your installed version.
 
 ## Install
 
-From the repository root, copy the distributable files:
+From the repository root, run this command with your project directory:
+
+```sh
+pnpm run install:mod --project-root "$HOME/Documents/Code"
+```
+
+Installation requires Node 24 or newer and pnpm 11.x. The installed mod does not need Node or pnpm.
+
+The installer copies the mod into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher`, writes its configuration, checks native loading, and adds Cmd+Shift+G.
+
+Existing keybindings are preserved. The installer backs up `keys.json` before adding the shortcut. If Cmd+Shift+G is already assigned, installation stops before copying files. Add `--no-shortcut` to install while keeping that binding.
+
+An existing mod directory requires `--update`. This replaces its distributable code files and preserves `config.json`, recovery records, and unrelated files. Supply `--project-root` again only to change that setting.
+
+```sh
+pnpm run install:mod --update
+```
+
+The installer does not start or restart the app/core, open spaces, or fetch Git refs. Open the installed launcher with Cmd+Shift+G or:
+
+```sh
+herdr-app do mod.open --name worktree-launcher
+```
+
+Herdr's [mod installation guidance](https://github.com/herdrdev/herdr-app/blob/master/defaults/AGENTS.md#layouts-and-mods-other-people-made) recommends copying mod files, merging keys without replacing existing bindings, and running `herdr-app check`. Mods belong to the app; herdr-core runs terminals and needs no separate mod installation.
+
+### Manual installation
+
+To install without the script, copy the distributable files:
 
 ```sh
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
@@ -128,7 +156,7 @@ The mod does not remove branches or worktrees. It does not claim that window clo
 
 ## Update and remove
 
-For an update, repeat the source-file copy from Install. The copy excludes `config.json` and preserves your configuration.
+For an update, run `pnpm run install:mod --update`. The manual source-file copy also excludes `config.json` and preserves your configuration.
 
 Before removal, move `config.json` to a backup directory outside the mod folder.
 

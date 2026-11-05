@@ -9,7 +9,17 @@ The mod uses Herdr app/core, Git, and standard macOS utilities. It needs no Node
 
 See [installation and use](mods/worktree-launcher/README.md) and the [validation report](docs/validation/worktree-launcher.md).
 
-The supplied shortcut is **Cmd+Shift+G**. Installation does not change your keybindings automatically.
+## Install
+
+With Node 24 or newer and pnpm 11.x, run:
+
+```sh
+pnpm run install:mod --project-root "$HOME/Documents/Code"
+```
+
+Choose the directory containing your projects. The installer adds **Cmd+Shift+G** if it is unassigned, preserves other bindings, and checks native module loading. Use `--no-shortcut` to leave keybindings unchanged.
+
+For updates, run `pnpm run install:mod --update`. This preserves your configuration. See the [installation guide](mods/worktree-launcher/README.md#install) for custom app homes and manual installation.
 
 ## Development
 

@@ -195,3 +195,13 @@ This follow-up does not complete the outstanding physical keyboard, mouse, or sh
 The package, mod directory, shortcut target, tests, and documentation now use `worktree-launcher`. The checkout directory remains `herdr-worktree` at the user's request. The isolated launcher's stop command still recognizes sessions created under the old project name.
 
 `pnpm test` passed all 35 tests under Node 24.22.1 after the rename. The user also reported that the plugin UI looks good; this feedback does not establish each outstanding keyboard and mouse scenario.
+
+## Installer follow-up — 2026-11-05
+
+`pnpm run install:mod` copies the distributable files, configures one project root, checks native loading, and merges the supplied shortcut. Updates require `--update` and preserve user configuration unless a new root is explicitly supplied.
+
+The installer follows the installed Herdr app guide's copy, merge, and check steps. It does not manage herdr-core installation or lifecycle. Shortcut conflicts and malformed key files stop before mod files are copied. Existing keys receive a backup before a merge, and a failed native check leaves the keys unchanged.
+
+All 40 tests passed under Node 24.22.1. Five installer tests cover standalone copying, key merging and backup, configuration preservation, explicit updates, invalid roots, shortcut conflicts, malformed keys, skipped shortcuts, failed native checks, default/custom app homes, and symlink refusal.
+
+First installation and update also passed using the real Herdr app 0.1.13 checker with core 0.1.18 installed. This smoke test used a temporary home, app home, core session, socket, project directory, and XDG paths under `/private/tmp/hwi-xNGnva`. It did not open a window, create spaces, restart a core, or alter the live installation.
