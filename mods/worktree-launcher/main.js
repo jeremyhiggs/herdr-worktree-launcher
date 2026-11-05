@@ -1,7 +1,8 @@
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar, TextView } from 'gpui-base';
-import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, run, theme, props, closeOverlay } from 'herdr';
-import { createGit } from './git.js';
+import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, machines, pickFolder, shared, setShared, run, theme, props, closeOverlay } from 'herdr';
+import { connectGit } from './git.js';
+import { createConfigStore } from './config.js';
 import { WorktreeModel, openCheckout } from './model.js';
 
 function selectableText(id, text) {
@@ -14,39 +15,47 @@ export default class WorktreeLauncher extends View {
     this.handle = cx.focus_handle();
     this.scroll = VirtualListScrollHandle.new();
     this.field = 'project';
-    this.openField = 'project';
-    this.activeInput = 'project';
+    this.openField = null;
+    this.activeInput = null;
     this.index = 0;
-    this.filters = { project: '', ref: '' };
+    this.filters = { machine: '', project: '', ref: '' };
+    this.editingRoot = false;
     this.inputs = {};
     this.buttons = {};
-    for (const key of ['new', 'existing', 'refresh', 'close', 'create', 'open-created']) this.buttons[key] = cx.focus_handle();
-    for (const [field, placeholder] of [['project', 'Search projects'], ['name', 'New branch name'], ['ref', 'Search local and fetched remote branches']]) {
+    for (const key of ['new', 'existing', 'refresh', 'close', 'create', 'open-created', 'save-root', 'browse-root', 'change-root']) this.buttons[key] = cx.focus_handle();
+    for (const [field, placeholder] of [['machine', 'Search machines'], ['root', 'Absolute project directory on this machine'], ['project', 'Search projects'], ['name', 'New branch name'], ['ref', 'Search local and fetched remote branches']]) {
       const input = InputState.new({ placeholder });
       this.inputs[field] = input;
       input.on('change', (_e, cx) => {
         if (this.syncing) return;
         if (field === 'name') this.model.setName(input.value());
-        else { this.field = field; this.openField = field; this.filters[field] = input.value(); this.index = 0; this.scroll.scroll_to_item(0); }
+        else if (field !== 'root') { this.field = field; this.openField = field; this.filters[field] = input.value(); this.index = 0; this.scroll.scroll_to_item(0); }
         cx.notify();
       });
-      input.on('focus', (_e, cx) => { this.activeInput = field; this.openField = field === 'name' ? null : field; if (field !== 'name') this.field = field; this.index = 0; cx.notify(); });
+      input.on('focus', (_e, cx) => { this.activeInput = field; this.openField = ['name', 'root'].includes(field) ? null : field; if (!['name', 'root'].includes(field)) this.field = field; this.index = 0; cx.notify(); });
       input.on('blur', (_e, cx) => { if (this.activeInput === field) this.activeInput = null; cx.notify(); });
       input.on('submit', (event, cx) => {
-        if (event.secondary) this.task(cx, open => this.model.submit(open));
+        if (field === 'root') this.saveRoot(cx);
+        else if (event.secondary) this.task(cx, open => this.model.submit(open));
         else if (field !== 'name' && this.openField === field) this.choose(this.rows(field)[this.index], cx, field);
       });
     }
-    const git = createGit(exec, home());
     const configPath = `${appHome()}/mods/worktree-launcher/config.json`;
+    const config = createConfigStore(readTextFile, writeTextFile, configPath);
     const recordPath = `${appHome()}/data/worktree-launcher-operation.json`;
+    const setupTarget = shared('worktree-launcher.setup-target');
+    const configuring = setupTarget && setupTarget.expires > Date.now();
+    if (configuring) setShared('worktree-launcher.setup-target', null);
     let snapshot = null;
     this.model = new WorktreeModel({
-      git,
-      config: async () => {
-        const text = await readTextFile(configPath);
-        if (text === null) throw new Error('Missing config.json: set project_root to an absolute, readable directory. See the mod README.');
-        try { return JSON.parse(text); } catch { throw new Error('Malformed config.json: expected JSON with a project_root setting.'); }
+      machine: configuring ? setupTarget.machine : spaces().find(s => s.active)?.machine ?? null,
+      connect: machine => connectGit(exec, home(), machine),
+      config: machine => config.get(machine),
+      saveRoot: async (machine, root) => {
+        // Saving config.json reloads this mod; retain the setup target for that reload.
+        setShared('worktree-launcher.setup-target', { machine, expires: Date.now() + 10000 });
+        try { await config.set(machine, root); }
+        catch (error) { setShared('worktree-launcher.setup-target', null); throw error; }
       },
       journal: {
         load: async () => {
@@ -61,8 +70,14 @@ export default class WorktreeLauncher extends View {
         },
       },
     });
-    this.task(cx, () => this.model.refresh());
-    this.inputs.project.focus();
+    this.showChoice('machine', this.model.machine ?? 'Local');
+    this.task(cx, async () => {
+      const pending = this.model.refresh(), generation = this.model.generation;
+      await pending;
+      if (this.model.closed || generation !== this.model.generation) return;
+      this.syncContext();
+      (this.model.git ? this.model.rootReady ? this.inputs.project : this.inputs.root : this.inputs.machine).focus();
+    });
   }
 
   task(cx, work) {
@@ -79,9 +94,30 @@ export default class WorktreeLauncher extends View {
       });
       try {
         const pending = work(open); if (this.model.busy) this.openField = null; cx.notify(); await pending;
+        this.syncContext();
         if (this.model.phase === 'complete') closeOverlay(props().overlay);
         else cx.notify();
       } catch (e) { this.model.error = String(e); cx.notify(); }
+    });
+  }
+
+  syncContext() {
+    const m = this.model;
+    if (this.syncedMachine !== m.machine || this.syncedRoot !== m.root) {
+      this.syncing = true;
+      try { this.inputs.root.set_value(m.root); this.inputs.machine.set_value(m.machine ?? 'Local'); }
+      finally { this.syncing = false; }
+      this.filters.machine = '';
+      this.syncedMachine = m.machine; this.syncedRoot = m.root;
+      this.editingRoot = !m.rootReady;
+    }
+    if (!m.rootReady && m.phase === 'editing') this.editingRoot = true;
+  }
+
+  saveRoot(cx) {
+    this.task(cx, async () => {
+      await this.model.configureRoot(this.inputs.root.value());
+      if (!this.model.error && this.model.rootReady) { this.editingRoot = false; this.inputs.project.focus(); }
     });
   }
 
@@ -93,28 +129,44 @@ export default class WorktreeLauncher extends View {
   }
 
   rows(field = this.field) {
-    const source = field === 'project' ? this.model.projects : this.model.refs;
+    const source = field === 'machine'
+      ? [{ id: 'null', name: null, label: 'Local', reason: 'This computer' }, ...machines().filter(m => m.name).map(m => ({ id: JSON.stringify(m.name), name: m.name, label: m.name, reason: m.layout === 'ready' ? '' : m.layout === 'loading' ? 'Connecting…' : 'Unavailable' }))]
+      : field === 'project' ? this.model.projects : this.model.refs;
     const filter = this.filters[field].toLowerCase();
     return source.filter(row => `${row.label} ${row.reason ?? ''}`.toLowerCase().includes(filter));
   }
 
   emptyMessage(field) {
     const m = this.model;
+    if (field === 'machine') return 'No matching machines';
     if (m.phase === 'loading') return 'Loading…';
     if (field !== 'project') return m.project ? 'No matching branches' : 'Select a project first';
     if (m.error) return 'Fix the configuration, then Refresh.';
-    return m.projects.length ? 'No matching projects' : 'No projects found';
+    return !m.root ? 'Set a project root for this machine first' : m.projects.length ? 'No matching projects' : 'No projects found';
   }
 
   choose(row, cx, field = this.field) {
     if (!row || !this.model.editable) return;
-    if (field === 'project') {
+    if (field === 'machine') {
+      if (row.name !== this.model.machine) {
+        this.clearInputs(); this.inputs.project.set_value(''); this.filters.project = '';
+      }
+      this.showChoice('machine', row.label); this.openField = null;
+      this.task(cx, async () => {
+        const pending = this.model.selectMachine(row.name), generation = this.model.generation;
+        await pending;
+        if (this.model.closed || generation !== this.model.generation) return;
+        this.syncContext();
+        if (this.model.git) (this.model.rootReady ? this.inputs.project : this.inputs.root).focus();
+      });
+    } else if (field === 'project') {
       this.clearInputs();
       this.showChoice('project', row.label);
       this.openField = null;
       this.task(cx, async () => {
-        await this.model.selectProject(row);
-        if (!this.model.closed && this.model.project?.id === row.id && this.model.phase === 'editing') this.buttons[this.model.action].focus();
+        const pending = this.model.selectProject(row), generation = this.model.generation;
+        await pending;
+        if (!this.model.closed && generation === this.model.generation && this.model.project?.id === row.id && this.model.phase === 'editing') this.buttons[this.model.action].focus();
       });
     } else {
       if (this.model.action === 'existing' && row.reason) return;
@@ -138,7 +190,8 @@ export default class WorktreeLauncher extends View {
 
   key(event, cx) {
     if (event.key === 'tab') {
-      const order = ['project', 'new', 'existing', ...(this.model.project ? ['ref'] : []), ...(this.model.action === 'new' && this.model.ref ? ['name'] : []), 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
+      const rootFields = this.editingRoot || !this.model.rootReady ? ['root', 'save-root', ...(!this.model.machine ? ['browse-root'] : [])] : ['change-root'];
+      const order = ['machine', ...rootFields, 'project', 'new', 'existing', ...(this.model.project ? ['ref'] : []), ...(this.model.action === 'new' && this.model.ref ? ['name'] : []), 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
       const current = this.activeInput || order.find(key => this.buttons[key]?.is_focused());
       const step = event.modifiers.shift ? -1 : 1;
       const next = order[(Math.max(0, order.indexOf(current)) + step + order.length) % order.length];
@@ -146,8 +199,8 @@ export default class WorktreeLauncher extends View {
       cx.stop_propagation(); cx.notify();
     }
     else if (event.key === 'escape') { cx.stop_propagation(); this.dismiss(); cx.notify(); }
-    else if (event.keystroke === 'cmd-enter') { cx.stop_propagation(); this.task(cx, open => this.model.submit(open)); }
-    else if (['up', 'down'].includes(event.key) && ['project', 'ref'].includes(this.activeInput)) {
+    else if (event.keystroke === 'cmd-enter') { cx.stop_propagation(); if (this.activeInput === 'root') this.saveRoot(cx); else this.task(cx, open => this.model.submit(open)); }
+    else if (['up', 'down'].includes(event.key) && ['machine', 'project', 'ref'].includes(this.activeInput)) {
       this.field = this.activeInput; this.openField = this.activeInput;
       const count = this.rows().length;
       if (count) { this.index = (this.index + (event.key === 'down' ? 1 : count - 1)) % count; this.scroll.scroll_to_item(this.index, 'center'); }
@@ -156,21 +209,21 @@ export default class WorktreeLauncher extends View {
   }
 
   choiceList(field, t) {
-    const rows = this.rows(field), m = this.model, isProject = field === 'project';
-    const key = row => isProject ? row.id : row.ref;
+    const rows = this.rows(field), m = this.model, isProject = field === 'project', isMachine = field === 'machine';
+    const key = row => isProject || isMachine ? row.id : row.ref;
     const height = Math.min(220, Math.max(44, rows.length * 44));
     const content = v_flex().w(Math.max(240, (this.width ?? 700) - 36)).h(height).bg(t.popover).border_1().border_color(t.border).rounded(6)
       .on_mouse_down_out((_e, cx) => { if (this.openField === field) { this.openField = null; cx.notify(); } });
     if (!rows.length) return content.child(div().p(10).text_color(t.muted).child(this.emptyMessage(field)));
     return content.child(div().relative().size_full()
       .child(v_virtual_list(`worktree-${field}-choices`, rows.length, 44, i => key(rows[i]), range => rows.slice(range.start, range.end).map((row, offset) => {
-        const unavailable = !isProject && m.action === 'existing' && !!row.reason;
-        const chosen = isProject ? m.project?.id === row.id : m.ref?.ref === row.ref;
+        const unavailable = field === 'ref' && m.action === 'existing' && !!row.reason;
+        const chosen = isMachine ? m.machine === row.name : isProject ? m.project?.id === row.id : m.ref?.ref === row.ref;
         return v_flex().h(44).px(10).justify_center().rounded(5)
           .bg(range.start + offset === this.index ? t.selected : t.popover)
           .text_color(unavailable ? t.dim : t.foreground)
           .child(div().truncate().child(`${chosen ? '✓ ' : ''}${row.label}`))
-          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isProject ? row.path : unavailable ? row.reason : row.ref));
+          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isMachine ? row.reason : isProject ? row.path : unavailable ? row.reason : row.ref));
       })).size_full().track_scroll(this.scroll).on_item_click((value, cx) => {
         if (this.openField === field) this.choose(this.rows(field).find(row => key(row) === value), cx, field);
       }))
@@ -185,8 +238,8 @@ export default class WorktreeLauncher extends View {
       .text_color(disabled ? t.dim : t.foreground).focus(s => s.border_color(t.accent))
       .on_click(action).child(text);
     const label = text => div().text_size(11).text_color(t.muted).child(text);
-    const input = field => Input.new(this.inputs[field]).disabled(!m.editable || field === 'ref' && !m.project || field === 'name' && !m.ref)
-      .accessibility_label(field === 'ref' ? m.action === 'new' ? 'Base branch' : 'Existing branch' : field === 'name' ? 'New branch name' : 'Project')
+    const input = field => Input.new(this.inputs[field]).disabled(!m.editable || field === 'root' && !m.git || field === 'ref' && !m.project || field === 'name' && !m.ref)
+      .accessibility_label(field === 'ref' ? m.action === 'new' ? 'Base branch' : 'Existing branch' : field === 'name' ? 'New branch name' : field === 'root' ? 'Project root' : field === 'machine' ? 'Machine' : 'Project')
       .h(34).px(10).rounded(6).border_1().border_color(this.activeInput === field ? t.accent : t.border)
       .bg(t.input).text_color(t.foreground);
     const picker = field => Popup.new(`worktree-${field}-picker`, div().w_full().on_click((_e, cx) => { this.field = field; this.openField = field; cx.notify(); }).child(input(field)))
@@ -198,6 +251,20 @@ export default class WorktreeLauncher extends View {
       .child(h_flex().items_center().justify_between()
         .child(div().text_size(17).font_semibold().child('Worktree Launcher'))
         .child(button('refresh', 'Refresh', (_e, cx) => { this.clearInputs(); this.inputs.project.set_value(''); this.filters.project = ''; this.field = 'project'; this.task(cx, () => m.refresh()); }, m.busy, false, 5)))
+      .child(label('Machine'))
+      .child(picker('machine'))
+      .when(this.editingRoot || !m.rootReady, el => el
+        .child(label(`Project root on ${m.machine ?? 'this computer'}`))
+        .child(h_flex().gap(8).child(div().flex_1().min_w(0).child(input('root')))
+          .child(button('save-root', 'Save', (_e, cx) => this.saveRoot(cx), !m.editable || !m.git))
+          .when(!m.machine, row => row.child(button('browse-root', 'Browse…', (_e, cx) => this.task(cx, async () => {
+            const generation = m.generation;
+            const path = await pickFolder({ prompt: 'Choose project root' });
+            if (path && !m.closed && !m.machine && m.generation === generation) { this.inputs.root.set_value(path); await m.configureRoot(path); if (!m.error) this.editingRoot = false; }
+          }), !m.editable)))))
+      .when(!this.editingRoot && m.rootReady, el => el.child(h_flex().gap(8).items_center()
+        .child(div().flex_1().min_w(0).child(selectableText('project-root', m.root).text_size(11).text_color(t.muted)))
+        .child(button('change-root', 'Change root', (_e, cx) => { this.editingRoot = true; this.inputs.root.focus(); cx.notify(); }, !m.editable))))
       .child(label('Project'))
       .child(picker('project'))
       .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) this.inputs.name.set_value(''); this.openField = null; if (m.project) this.inputs.ref.focus(); cx.notify(); }, !m.editable, m.action === action, i + 1))))

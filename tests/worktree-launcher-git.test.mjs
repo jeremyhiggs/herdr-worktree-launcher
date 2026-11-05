@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createGit } from '../mods/worktree-launcher/git.js';
+import { createGit, connectGit } from '../mods/worktree-launcher/git.js';
 
 const execute = promisify(execFile);
 const runner = async (command, args, options) => {
@@ -70,6 +70,37 @@ test('an app-context read denial names the project root and explains the macOS f
     assert.match(error.message, /Files and Folders/);
     return true;
   });
+});
+
+test('remote connections route every command to one machine, use its home, and refuse cross-machine requests', async t => {
+  const f = await fixture(t); const p = await f.repo('app');
+  const calls = [];
+  const remote = await connectGit(async (command, args, options) => {
+    calls.push({ command, args, options });
+    if (command === '/usr/bin/uname') return { code: 0, stdout: 'Linux\n', stderr: '' };
+    if (command === '/usr/bin/printenv') return { code: 0, stdout: `${f.home}\n`, stderr: '' };
+    return runner(command, args, options);
+  }, '/wrong-local-home', 'devbox');
+  const project = (await remote.discover({ project_root: f.root })).find(x => x.path === p);
+  assert.equal(project.machine, 'devbox'); assert.equal(remote.userHome, f.home);
+  const request = await remote.prepare({ project, action: 'new', ref: 'refs/heads/main', name: 'remote-test' });
+  assert.equal(request.machine, 'devbox'); assert(request.path.startsWith(f.home));
+  assert.equal((await remote.create(request)).kind, 'created');
+  assert(calls.every(call => call.options.on === 'devbox'));
+  const before = calls.length;
+  assert.equal((await remote.create({ ...request, machine: null })).kind, 'partial');
+  assert.equal(calls.length, before);
+  await assert.rejects(remote.prepare({ project: { ...project, machine: null }, action: 'new', ref: 'refs/heads/main', name: 'wrong' }), /another machine/);
+  assert.equal(calls.length, before);
+});
+
+test('unsupported or disconnected remote machines do not fall back to local commands', async () => {
+  const calls = [];
+  await assert.rejects(connectGit(async (command, _args, options) => {
+    calls.push([command, options]); return { code: 0, stdout: command.endsWith('uname') ? 'Windows_NT' : '/remote-home/fixture', stderr: '' };
+  }, '/local', 'devbox'), /Linux or macOS/);
+  assert(calls.every(([, options]) => options.on === 'devbox'));
+  await assert.rejects(connectGit(async () => { throw new Error('machine unreachable'); }, '/local', 'devbox'), /unreachable/);
 });
 
 for (const [action, ref, name, expected, upstream] of [

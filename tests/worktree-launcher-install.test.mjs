@@ -42,7 +42,7 @@ test('install copies a standalone mod, merges and backs up keys, and checks with
   assert.equal(await readFile(join(f.app, backup), 'utf8'), original);
   assert.equal(await readFile(recovery, 'utf8'), 'preserve recovery');
   assert.deepEqual((await readFile(f.env.WL_EVENTS, 'utf8')).trim().split('\n').map(JSON.parse), [['--version'], ['check', f.target]]);
-  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.json', 'git.js', 'keys.json', 'main.js', 'mod.json', 'model.js'].sort());
+  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.json', 'config.js', 'git.js', 'keys.json', 'main.js', 'mod.json', 'model.js'].sort());
 });
 
 test('update is explicit, preserves config and keys byte-for-byte, and can change only the requested root', async t => {
@@ -64,15 +64,24 @@ test('update is explicit, preserves config and keys byte-for-byte, and can chang
 });
 
 test('invalid roots, keybinding conflicts, and malformed keys fail before mod files are copied', async t => {
-  for (const scenario of ['missing root', 'relative root', 'conflicting key', 'malformed keys']) {
+  for (const scenario of ['relative root', 'conflicting key', 'malformed keys']) {
     const f = await fixture(t);
     const keys = scenario === 'malformed keys' ? '{invalid' : JSON.stringify({ global: { 'cmd-shift-g': 'app.palette' } });
     await writeFile(f.keys, keys);
-    const args = scenario === 'missing root' ? [] : ['--project-root', scenario === 'relative root' ? '.' : f.projects];
+    const args = ['--project-root', scenario === 'relative root' ? '.' : f.projects];
     await assert.rejects(f.run(args), /project-root|already assigned|Invalid JSON/);
     await assert.rejects(readdir(f.target), { code: 'ENOENT' });
     assert.equal(await readFile(f.keys, 'utf8'), keys);
   }
+});
+
+test('installation without a project root supports UI setup, and update preserves remote-only configuration', async t => {
+  const f = await fixture(t); await f.run();
+  const configPath = join(f.target, 'config.json');
+  assert.deepEqual(JSON.parse(await readFile(configPath)), {});
+  const config = JSON.stringify({ remote_project_roots: { devbox: '/remote/projects' } });
+  await writeFile(configPath, config); await f.run(['--update']);
+  assert.equal(await readFile(configPath, 'utf8'), config);
 });
 
 test('no-shortcut preserves an existing binding and native check failures do not alter keys', async t => {

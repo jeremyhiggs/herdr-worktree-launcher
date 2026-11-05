@@ -11,12 +11,13 @@ function setup(overrides = {}) {
   let saved = null, mutations = 0, opens = 0;
   const request = { project: a, action: 'new', ref: ref.ref, name: 'feature', path: '/fixture/worktree', commit: 'abc', upstream: '' };
   const git = {
+    machine: null, userHome: '/fixture-home', validateRoot: async config => config.project_root,
     discover: async () => [a, b], choices: async () => [ref], destination: () => request.path,
     prepare: async () => request, create: async () => { mutations++; return { kind: 'created', path: request.path, request }; },
     inspect: async r => ({ kind: 'created', path: r.path, request: r }), ...overrides.git,
   };
-  const model = new WorktreeModel({ config: async () => ({}), journal: { load: async () => saved, save: async r => { saved = r; } }, open: async () => { opens++; }, ...overrides, git });
-  return { model, request, get mutations() { return mutations; }, get opens() { return opens; }, get saved() { return saved; } };
+  const model = new WorktreeModel({ connect: async () => git, config: async () => ({ project_root: '/projects' }), saveRoot: async () => {}, journal: { load: async () => saved, save: async r => { saved = r; } }, open: async () => { opens++; }, ...overrides });
+  return { model, git, request, get mutations() { return mutations; }, get opens() { return opens; }, get saved() { return saved; } };
 }
 async function fill(model) { await model.refresh(); await model.selectProject(a); model.setName('feature'); model.selectRef(ref); }
 
@@ -71,8 +72,8 @@ test('reopening reconciles journal before allowing mutation, including incomplet
   for (const kind of ['created', 'partial', 'absent']) {
     const f = setup(); let mutation = 0;
     f.model.journal.load = async () => f.request;
-    f.model.git.inspect = async r => ({ kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' });
-    f.model.git.create = async () => { mutation++; };
+    f.git.inspect = async r => ({ kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' });
+    f.git.create = async () => { mutation++; };
     await f.model.refresh(); assert.equal(f.model.phase, kind === 'created' ? 'recover' : 'partial');
     await f.model.submit(); assert.equal(mutation, 0);
   }
@@ -121,7 +122,7 @@ test('opening creates and observes the project space before the worktree space',
       if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
     },
   });
-  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/project' }], ['space.new', { folder: '/worktree' }]]);
+  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/project', machine: '' }], ['space.new', { folder: '/worktree', machine: '' }]]);
   assert.equal(state.panes.find(p => p.focused).cwd, '/worktree');
 });
 
@@ -130,7 +131,7 @@ test('an unobserved project space prevents opening an ungrouped worktree space',
   await assert.rejects(openCheckout({ path: '/worktree', project: { id: 'A', path: '/project' } }, { identity: async path => ({ id: 'A', top: path }) }, {
     snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => time, pause: async () => { time += 1000; }, timeout: noTimeout,
   }), /unconfirmed/i);
-  assert.deepEqual(calls, [['space.new', { folder: '/project' }]]);
+  assert.deepEqual(calls, [['space.new', { folder: '/project', machine: '' }]]);
 });
 
 test('an existing project space with no terminal cwd is reused by its folder', async () => {
@@ -194,4 +195,91 @@ test('failure without any artifact clears the journal and waits for an explicit 
   assert.equal(f.opens, 0); assert.match(f.model.error, /injected failure/);
   await f.model.submit();
   assert.equal(f.model.phase, 'complete'); assert.equal(attempts, 2); assert.equal(f.opens, 1);
+});
+
+test('machine changes invalidate late discovery and clear dependent selections', async () => {
+  const late = deferred();
+  const local = setup().git, remote = { ...local, machine: 'devbox', userHome: '/remote-home/fixture', discover: async () => [{ ...b, machine: 'devbox' }] };
+  local.discover = () => late.promise;
+  const f = setup({ connect: async machine => machine ? remote : local });
+  const loading = f.model.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  await f.model.selectMachine('devbox');
+  late.resolve([a]); await loading;
+  assert.equal(f.model.machine, 'devbox'); assert.equal(f.model.git, remote);
+  assert.deepEqual(f.model.projects.map(p => p.id), ['B']);
+  assert.equal(f.model.project, null); assert.equal(f.model.ref, null); assert.equal(f.model.name, '');
+});
+
+test('an unset root can be validated and saved on the selected machine without Git mutation', async () => {
+  const roots = new Map(), validated = [], saved = [];
+  const f = setup({ machine: 'devbox',
+    config: async machine => ({ project_root: roots.get(machine) ?? '' }),
+    saveRoot: async (machine, root) => { roots.set(machine, root); saved.push([machine, root]); },
+    git: { machine: 'devbox', validateRoot: async config => {
+      validated.push(config.project_root);
+      if (!config.project_root.startsWith('/')) throw new Error('Use an absolute directory.');
+      return config.project_root;
+    } },
+  });
+  await f.model.refresh(); assert.equal(f.model.rootReady, false); assert.equal(f.model.canCreate, false);
+  await f.model.configureRoot('relative'); assert.match(f.model.error, /absolute/); assert.equal(saved.length, 0);
+  await f.model.configureRoot('/remote-home/fixture/projects');
+  assert.deepEqual(saved, [['devbox', '/remote-home/fixture/projects']]);
+  assert.equal(f.model.rootReady, true); assert.equal(f.model.projects.length, 2); assert.equal(f.mutations, 0);
+  assert.deepEqual(validated, ['relative', '/remote-home/fixture/projects']);
+});
+
+test('recovery pins its saved machine and cannot silently switch to local creation', async () => {
+  const connected = [], f = setup({ machine: null });
+  const request = { ...f.request, machine: 'devbox', project: { ...a, machine: 'devbox', root: '/remote/projects' } };
+  f.model.connect = async machine => { connected.push(machine); return { ...f.git, machine }; };
+  f.model.journal.load = async () => request;
+  await f.model.refresh();
+  assert.equal(f.model.machine, 'devbox'); assert.deepEqual(connected, ['devbox']);
+  assert.equal(f.model.phase, 'recover'); assert.equal(await f.model.selectMachine(null), false);
+  await f.model.openCreated(); assert.equal(f.opens, 1); assert.equal(f.mutations, 0);
+});
+
+test('remote space matching ignores identical local paths and uses namespaced remote IDs', async () => {
+  const calls = [], state = { spaces: [], panes: [] };
+  for (const machine of [null, 'other', 'devbox']) for (const path of ['/project', '/worktree']) {
+    const id = `${machine ?? 'local'}${path}`;
+    state.spaces.push({ id, machine, folder: path, tabs: [{ id }], active: false });
+    state.panes.push({ pane: id, tab: id, terminal: id, cwd: path, program: { shell: true }, focused: false });
+  }
+  await openCheckout({ machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } }, { machine: 'devbox', identity: async path => ({ id: 'A', top: path }) }, {
+    snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
+    run: (command, args) => {
+      calls.push([command, args]);
+      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
+      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
+    },
+  });
+  assert(!calls.some(([command]) => command === 'space.new'));
+  assert(calls.some(([command, args]) => command === 'space.select' && args.id === 'devbox/worktree'));
+  assert(!state.spaces.some(s => s.machine !== 'devbox' && s.active));
+});
+
+test('remote opening sends the machine on every new project/worktree space and rejects a wrong adapter', async () => {
+  const calls = [], state = { spaces: [], panes: [] };
+  const request = { machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } };
+  const app = { snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
+    run: (command, args) => {
+      calls.push([command, args]);
+      if (command === 'space.new') {
+        const id = `devbox/${state.spaces.length}`;
+        state.spaces.push({ id, machine: args.machine, folder: args.folder, tabs: [{ id }] });
+        state.panes.push({ pane: id, tab: id, terminal: id, cwd: args.folder, program: { shell: true } });
+      }
+      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
+      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
+    },
+  };
+  await assert.rejects(openCheckout(request, { machine: null }, app), /another machine/);
+  assert.deepEqual(calls, []);
+  await openCheckout(request, { machine: 'devbox', identity: async path => ({ id: 'A', top: path }) }, app);
+  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [
+    ['space.new', { folder: '/project', machine: 'devbox' }], ['space.new', { folder: '/worktree', machine: 'devbox' }],
+  ]);
 });

@@ -2,23 +2,24 @@
 
 ## Requirements
 
-- macOS with Herdr app/core and Git.
-- Standard macOS `find`, `realpath`, `test`, and `mkdir` utilities.
-- One absolute, readable project directory.
+- macOS with Herdr app/core.
+- Git, `find`, `realpath`, `test`, and `mkdir` on each target machine.
+- Linux or macOS for remote targets, connected through Herdr Core.
+- One absolute, readable project directory per machine, configured in the launcher.
 
 The mod was checked with Herdr app 0.1.13 and core 0.1.18. The installer runs a fresh module check on your installed version.
 
 ## Install
 
-From the repository root, run this command with your project directory:
+From the repository root, run:
 
 ```sh
-pnpm run install:mod --project-root "$HOME/Documents/Code"
+pnpm run install:mod
 ```
 
 Installation requires Node 24 or newer and pnpm 11.x. The installed mod does not need Node or pnpm.
 
-The installer copies the mod into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher`, writes its configuration, checks native loading, and adds Cmd+Shift+G.
+The installer copies the mod into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher`, checks native loading, and adds Cmd+Shift+G. Open the launcher to configure project roots. To set the local root during installation, add `--project-root "$HOME/Documents/Code"`.
 
 Existing keybindings are preserved. The installer backs up `keys.json` before adding the shortcut. If Cmd+Shift+G is already assigned, installation stops before copying files. Add `--no-shortcut` to install while keeping that binding.
 
@@ -44,20 +45,23 @@ To install without the script, copy the distributable files:
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mkdir -p "$app_home/mods/worktree-launcher"
 cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
-  mods/worktree-launcher/git.js mods/worktree-launcher/mod.json \
+  mods/worktree-launcher/git.js mods/worktree-launcher/config.js mods/worktree-launcher/mod.json \
   mods/worktree-launcher/config.example.json mods/worktree-launcher/keys.json \
   mods/worktree-launcher/README.md "$app_home/mods/worktree-launcher/"
 ```
 
-Create `config.json` in the installed mod directory. Replace this example path with your project directory:
+Open the launcher to configure its roots, or create `config.json` in the installed mod directory. Local and remote paths belong to their respective machines:
 
 ```json
 {
-  "project_root": "/absolute/path/to/projects"
+  "project_root": "/absolute/path/to/local/projects",
+  "remote_project_roots": {
+    "devbox": "/absolute/path/on/devbox"
+  }
 }
 ```
 
-The mod does not expand `~` or choose a fallback directory. Configuration errors appear in the overlay.
+The mod does not expand `~` or choose a fallback directory. An unset root opens the setup field. Configuration errors appear in the overlay.
 
 Run the module check against the installed directory:
 
@@ -88,13 +92,17 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 ## Use
 
 1. Open **Worktree Launcher**.
-2. Search for a project.
-3. Select a result from the project dropdown with the mouse or Up/Down and Enter.
-4. Choose **New branch** or **Existing branch**.
-5. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
-6. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
-7. Read the destination.
-8. Activate **Create** or press Cmd+Enter.
+2. Select **Local** or a connected machine, such as **devbox**. The initial target follows the active space.
+3. If its root is unset, enter an absolute path and select **Save**. Local setup also offers **Browse**. Remote paths are validated on that remote machine.
+4. Search for a project and select a result with the mouse or Up/Down and Enter.
+5. Choose **New branch** or **Existing branch**.
+6. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
+7. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
+8. Read the destination and activate **Create** or press Cmd+Enter.
+
+**Change root** edits the selected machine's root. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
+
+The UI mod is installed only in the local app. Remote discovery, validation, and Git commands use Herdr Core on the selected machine. No separate remote mod or Node installation is needed.
 
 Enter in a search field selects a choice. It does not submit the form. Tab and Shift+Tab move between controls.
 
@@ -116,7 +124,7 @@ Refresh rereads the configuration and discovers projects again. Opening the over
 
 ## Destination and limits
 
-The destination is `~/.herdr/worktrees/<primary-repo-basename>/<branch-slug>`.
+The destination is `~/.herdr/worktrees/<primary-repo-basename>/<branch-slug>` on the selected machine, using that machine's home directory.
 
 The slug replaces runs outside ASCII letters, digits, dot, underscore, and hyphen with a hyphen. It trims outer hyphens.
 
@@ -148,8 +156,10 @@ After a reload or window closure, the mod inspects this record and Git. A comple
 
 An incomplete operation blocks new creation. The mod preserves its checkout, branch, and operation record for manual inspection.
 
+The operation record includes its machine. Reopening selects that target before inspection or an open-only retry. One unresolved operation blocks new creation across machines. A disconnected machine never falls back to running locally.
+
 1. Wait for the original Git operation to finish.
-2. Inspect the reported repository with `git worktree list --porcelain` and `git branch -vv`.
+2. On the reported machine, inspect the repository with `git worktree list --porcelain` and `git branch -vv`.
 3. Repair any incomplete artifact manually.
 4. Move the operation record aside after you understand the outcome.
 5. Open the overlay again.

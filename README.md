@@ -1,6 +1,6 @@
 # Worktree Launcher for Herdr
 
-A native Herdr overlay for two Git workflows:
+A native Herdr overlay for local and connected Linux/macOS machines, with two Git workflows:
 
 - Create a worktree on an existing local or fetched remote branch.
 - Create a new branch from an explicitly selected local or remote base.
@@ -14,10 +14,10 @@ See [installation and use](mods/worktree-launcher/README.md) and the [validation
 With Node 24 or newer and pnpm 11.x, run:
 
 ```sh
-pnpm run install:mod --project-root "$HOME/Documents/Code"
+pnpm run install:mod
 ```
 
-Choose the directory containing your projects. The installer adds **Cmd+Shift+G** if it is unassigned, preserves other bindings, and checks native module loading. Use `--no-shortcut` to leave keybindings unchanged.
+The installer adds **Cmd+Shift+G** if it is unassigned, preserves other bindings, and checks native module loading. Open the launcher, choose a machine, and configure its project root with **Save**. Local setup also offers **Browse**. Use `--no-shortcut` to leave keybindings unchanged.
 
 For updates, run `pnpm run install:mod --update`. This preserves your configuration. See the [installation guide](mods/worktree-launcher/README.md#install) for custom app homes and manual installation.
 
@@ -62,11 +62,14 @@ pnpm run test:app stop /path/printed/by/the/launcher
 
 The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
 
-Repository discovery reads `<app-home>/mods/worktree-launcher/config.json`:
+Repository discovery reads `<app-home>/mods/worktree-launcher/config.json`. The UI can create this configuration and stores roots independently:
 
 ```json
 {
-  "project_root": "/absolute/path/to/projects"
+  "project_root": "/absolute/path/to/local/projects",
+  "remote_project_roots": {
+    "devbox": "/absolute/path/on/devbox"
+  }
 }
 ```
 
@@ -88,7 +91,13 @@ herdr-app check mods/worktree-launcher
 
 The test suite uses disposable Git repositories and local bare remotes. Node is a development dependency only.
 
-`git.js` owns repository discovery and Git operations. `model.js` owns form state and recovery. `main.js` owns the native overlay.
+`git.js` owns machine routing, repository discovery, and Git operations. `config.js` stores project roots. `model.js` owns form state and recovery. `main.js` owns the native overlay.
+
+An opt-in integration test creates and removes disposable repositories on a connected machine:
+
+```sh
+WORKTREE_TEST_MACHINE=devbox node --test tests/worktree-launcher-remote.test.mjs
+```
 
 Discovery follows the policies in the earlier Herdr worktree workflow bundle. This repository contains the standalone desktop mod.
 

@@ -217,3 +217,17 @@ The error now includes the failing root and macOS folder-permission guidance. It
 Errors, destination paths, checkout explanations, and recovery instructions now use selectable native TextView components. Plain text is HTML-escaped before rendering. The native module check passed, and an isolated screenshot verified literal angle brackets and ampersands in an error path. Drag selection and clipboard interaction remain unverified: native accessibility inspection timed out.
 
 The isolated test app and core were stopped. No live core was stopped or restarted. The normal installed project-root configuration was rechecked and remained unchanged.
+
+## Remote machines and root setup — 2026-11-05
+
+The user extended the scope to connected remote machines and project-root setup inside the launcher. The UI now lists Local and the app's connected machines. Missing roots open an editor with Save; local setup also offers the native folder picker. Roots are validated on the selected machine and stored independently, preserving existing local configuration and unrelated settings.
+
+The selected machine scopes every Git and filesystem command, its home directory, destination paths, space matching, space creation, and the recovery record. Identical paths on different machines do not match. Legacy operation records without a machine remain local. An unresolved remote operation pins recovery to its saved machine, and disconnection never causes a local fallback.
+
+`pnpm test` passed 54 tests, with the opt-in live remote test skipped. The suite covers config setup and persistence, legacy settings, stale-write rejection, machine switching, wrong-machine rejection before commands, remote home selection, unsupported/offline targets, recovery, same-path space isolation, and namespaced remote IDs.
+
+Separately, `WORKTREE_TEST_MACHINE=devbox node --test tests/worktree-launcher-remote.test.mjs` passed against the connected Linux machine (Git 2.55.0). It created only disposable repositories and worktrees under a generated temporary directory. All four branch flows passed with correct attached HEAD, commit, upstream, destination, and read-only inspection. The original fixture checkout stayed clean, and the remote fixture was removed afterward.
+
+The native module check passed. An isolated preview loaded the machine and root controls, but its separate test core had no devbox connection; that window was closed after inspection. Actual remote space opening has model coverage, while live devbox coverage here exercises Git operations. Full physical keyboard/mouse acceptance remains separate.
+
+Review reproduced two stale-callback focus races, including identical project IDs on different machines. Both regression tests failed before generation guards were added and passed afterward. The focused reread found no remaining issue. Saving config reloads the native mod, so a short-lived shared setup target preserves the selected machine through that reload.

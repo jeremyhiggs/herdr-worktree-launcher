@@ -1,4 +1,6 @@
 export async function openCheckout(request, git, app) {
+  const machine = request.machine ?? null;
+  if ((git.machine ?? null) !== machine) throw new Error('Checkout belongs to another machine.');
   const deadline = app.now() + 10000;
   let expired = false;
   const unconfirmed = () => new Error(`Opening unconfirmed after 10 seconds. Checkout preserved at ${request.path}. Retry Open created worktree.`);
@@ -14,7 +16,7 @@ export async function openCheckout(request, git, app) {
     if (target.id !== request.project.id) throw new Error('Created checkout identity changed; inspect Git.');
     async function match(identity, shell) {
       const { spaces, panes } = app.snapshot();
-      const local = spaces.filter(s => !s.machine);
+      const local = spaces.filter(s => (s.machine ?? null) === machine);
       // Check the likely space first, then verify its live checkout like every other candidate.
       local.sort((a, b) => Number(b.folder === identity.top) - Number(a.folder === identity.top));
       for (const space of local) {
@@ -34,7 +36,7 @@ export async function openCheckout(request, git, app) {
     async function ensure(identity, path, shell) {
       let found = await match(identity, shell);
       if (found) return found;
-      send('space.new', { folder: path });
+      send('space.new', { folder: path, machine: machine ?? '' });
       while (app.now() < deadline) {
         check();
         found = await match(identity, shell);
@@ -69,8 +71,11 @@ export async function openCheckout(request, git, app) {
 }
 
 export class WorktreeModel {
-  constructor({ git, config, journal, open }) {
-    Object.assign(this, { git, config, journal, open });
+  constructor({ connect, config, saveRoot, journal, open, machine = null }) {
+    Object.assign(this, { connect, config, saveRoot, journal, open, machine });
+    this.git = null;
+    this.root = '';
+    this.rootReady = false;
     this.generation = 0;
     this.closed = false;
     this.projects = [];
@@ -83,7 +88,7 @@ export class WorktreeModel {
     this.phase = 'loading';
     this.result = null;
   }
-  get busy() { return ['creating', 'opening'].includes(this.phase); }
+  get busy() { return ['configuring', 'creating', 'opening'].includes(this.phase); }
   get editable() { return !this.closed && ['editing', 'loading'].includes(this.phase); }
   get canCreate() { return this.phase === 'editing' && !!this.project && !!this.ref && (this.action === 'existing' ? !this.ref.reason : !!this.name); }
   get path() {
@@ -95,24 +100,50 @@ export class WorktreeModel {
   async refresh() {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
-    this.project = null; this.resetFields(); this.projects = []; this.phase = 'loading';
+    this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.rootReady = false; this.phase = 'loading';
     try {
       const pending = await this.journal.load();
+      if (this.closed || generation !== this.generation) return;
+      if (pending) this.machine = pending.machine ?? null;
+      const config = pending ? { project_root: pending.project.root } : await this.config(this.machine);
+      if (this.closed || generation !== this.generation) return;
+      this.root = config.project_root ?? '';
+      const git = await this.connect(this.machine);
+      if (this.closed || generation !== this.generation) return;
+      this.git = git;
       if (pending) {
-        const result = await this.git.inspect(pending);
+        const result = await git.inspect(pending);
         if (this.closed || generation !== this.generation) return;
         this.result = result;
+        this.rootReady = !!this.root;
         this.phase = result.kind === 'created' ? 'recover' : 'partial';
         this.error = result.error || (result.kind === 'created' ? 'A previous operation created this checkout. Open it without running creation again.' : 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.');
         return;
       }
-      const projects = await this.git.discover(await this.config());
+      const projects = this.root ? await git.discover(config) : [];
       if (this.closed || generation !== this.generation) return;
-      this.projects = projects; this.result = null; this.phase = 'editing';
+      this.projects = projects; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
     } catch (e) {
       if (this.closed || generation !== this.generation) return;
       this.error = e.message; this.phase = 'editing';
     }
+  }
+  async selectMachine(machine) {
+    if (!this.editable || this.machine === machine) return false;
+    this.machine = machine; this.root = '';
+    await this.refresh();
+    return true;
+  }
+  async configureRoot(root) {
+    if (!this.editable || !this.git) return;
+    this.generation++;
+    this.phase = 'configuring'; this.error = '';
+    try {
+      const canonical = await this.git.validateRoot({ project_root: root });
+      await this.saveRoot(this.machine, canonical);
+      this.phase = 'editing';
+      await this.refresh();
+    } catch (error) { this.error = error.message; this.phase = 'editing'; }
   }
   async selectProject(project) {
     if (!this.editable) return;

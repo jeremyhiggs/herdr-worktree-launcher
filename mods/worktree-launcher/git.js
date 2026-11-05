@@ -4,13 +4,27 @@ const basename = path => path.slice(path.lastIndexOf('/') + 1);
 const inside = (path, root) => path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
 const pruned = ['node_modules', 'vendor', 'target', 'build', 'dist', '.next', 'coverage'];
 
+export async function connectGit(exec, localHome, machine = null) {
+  const runner = (command, args, options) => exec(command, args, { ...options, on: machine });
+  let userHome = localHome;
+  if (machine) {
+    const [system, result] = await Promise.all([
+      runner('/usr/bin/uname', ['-s']), runner('/usr/bin/printenv', ['HOME']),
+    ]);
+    if (system.code !== 0 || !['Linux', 'Darwin'].includes(system.stdout.trim())) throw new Error('Remote worktrees require a connected Linux or macOS machine.');
+    userHome = result.stdout.trim();
+    if (result.code !== 0 || !userHome.startsWith('/') || /[\r\n]/.test(userHome)) throw new Error(`Cannot determine the home directory on ${machine}.`);
+  }
+  return createGit(runner, userHome, machine);
+}
+
 export function parseWorktrees(text) {
   return text.split('\0\0').filter(Boolean).map(block => Object.fromEntries(block.split('\0').filter(Boolean).map(field => {
     const at = field.indexOf(' '); return at < 0 ? [field, true] : [field.slice(0, at), field.slice(at + 1)];
   })));
 }
 
-export function createGit(runner, userHome) {
+export function createGit(runner, userHome, machine = null) {
   async function command(program, args, cwd) {
     const r = await runner(program, args, cwd ? { cwd } : {});
     if (r.code !== 0) {
@@ -43,7 +57,9 @@ export function createGit(runner, userHome) {
     const root = config?.project_root;
     if (!clean(root) || !root.startsWith('/')) throw new Error('Configure project_root as one absolute, readable directory in config.json.');
     if (!(await test('-d', root))) throw new Error(`Configured project_root is unavailable or is not a directory: ${root}`);
-    if (!(await test('-r', root)) || !(await test('-x', root))) throw new Error(`Herdr cannot read project_root: ${root}. Check its permissions. For Documents, enable Documents Folder for Herdr in System Settings → Privacy & Security → Files and Folders, then Refresh.`);
+    if (!(await test('-r', root)) || !(await test('-x', root))) throw new Error(machine
+      ? `Cannot read project_root on ${machine}: ${root}. Check the directory permissions on that machine, then Refresh.`
+      : `Herdr cannot read project_root: ${root}. Check its permissions. For Documents, enable Documents Folder for Herdr in System Settings → Privacy & Security → Files and Folders, then Refresh.`);
     return real(root);
   }
   async function ignored(path, root) {
@@ -75,12 +91,13 @@ export function createGit(runner, userHome) {
       if (repo.path === root || !inside(repo.path, root)) continue;
       const label = repo.path.slice(root.length + (root === '/' ? 0 : 1));
       if (label.split('/').some(p => pruned.includes(p)) || await ignored(repo.path, root)) continue;
-      projects.set(repo.id, { id: repo.id, path: repo.path, root, label, basename: basename(repo.path) });
+      projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: basename(repo.path) });
     }
     return [...projects.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
   async function validateProject(project) {
     if (!project || !clean(project.path) || !clean(project.root)) throw new Error('Select a project.');
+    if ((project.machine ?? null) !== machine) throw new Error('Project belongs to another machine; select it again.');
     const root = await rootOf({ project_root: project.root });
     const current = await projectIdentity(project.path);
     if (root !== project.root || current.path !== project.path || current.top !== project.path || current.id !== project.id || !inside(current.path, root) || current.path === root || basename(current.path) !== project.basename) throw new Error('Project identity changed; Refresh and select it again.');
@@ -137,10 +154,11 @@ export function createGit(runner, userHome) {
     const path = destination(project, name);
     await validateDestination(path);
     const commit = (await git(project.path, ['rev-parse', '--verify', `${ref}^{commit}`])).trim();
-    return { project, action, ref, name, path, commit, upstream: action === 'existing' ? selected.kind === 'remote' ? ref : selected.upstream : '', remote: selected.kind === 'remote' };
+    return { machine, project, action, ref, name, path, commit, upstream: action === 'existing' ? selected.kind === 'remote' ? ref : selected.upstream : '', remote: selected.kind === 'remote' };
   }
   async function inspect(request) {
     try {
+      if ((request.machine ?? null) !== machine || (request.project.machine ?? null) !== machine) throw new Error('Operation belongs to another machine.');
       const { project, path, name, commit, upstream } = request;
       const rows = await worktrees(project.path);
       const row = rows.find(w => w.worktree === path);
@@ -157,6 +175,7 @@ export function createGit(runner, userHome) {
   async function create(request) {
     let error = '';
     try {
+      if ((request.machine ?? null) !== machine) throw new Error('Operation belongs to another machine.');
       await validateProject(request.project);
       const refs = await choices(request.project);
       const selected = refs.find(r => r.ref === request.ref);
@@ -176,5 +195,5 @@ export function createGit(runner, userHome) {
     const result = await inspect(request);
     return { ...result, error: result.error || error || (result.kind !== 'created' ? 'Git did not create the requested checkout.' : '') };
   }
-  return { discover, choices, destination, prepare, create, inspect, identity };
+  return { machine, userHome, validateRoot: rootOf, discover, choices, destination, prepare, create, inspect, identity };
 }

@@ -8,7 +8,7 @@ import { parseArgs, promisify } from 'node:util';
 
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '../mods/worktree-launcher');
 const execute = promisify(execFile);
-const files = ['main.js', 'model.js', 'git.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md'];
+const files = ['main.js', 'model.js', 'git.js', 'config.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md'];
 async function readOptional(path) {
   try { return await readFile(path, 'utf8'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; return null; }
@@ -28,7 +28,7 @@ async function install() {
     'no-shortcut': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   if (values.help) {
-    console.log('Usage: pnpm run install:mod [--project-root /absolute/projects] [--update] [--no-shortcut]\nFirst install requires --project-root. Updates preserve configuration unless a new root is supplied.');
+    console.log('Usage: pnpm run install:mod [--project-root /absolute/projects] [--update] [--no-shortcut]\nProject roots can be configured in the launcher. Updates preserve configuration unless a new local root is supplied.');
     return;
   }
   const appHome = resolve(process.env.HERDR_APP_HOME || join(homedir(), '.config/herdr-app'));
@@ -41,11 +41,13 @@ async function install() {
   const configPath = join(target, 'config.json');
   const originalConfig = await readOptional(configPath);
   const config = originalConfig === null ? {} : object(originalConfig, configPath);
-  const root = values['project-root'] ?? config.project_root;
-  if (typeof root !== 'string' || !isAbsolute(root)) throw new Error('Supply --project-root with one absolute, readable project directory.');
-  if (!(await stat(root)).isDirectory()) throw new Error('The project root must be a directory.');
-  await access(root, constants.R_OK | constants.X_OK);
-  config.project_root = root;
+  const root = values['project-root'];
+  if (root !== undefined) {
+    if (!isAbsolute(root)) throw new Error('Supply --project-root with one absolute, readable project directory.');
+    if (!(await stat(root)).isDirectory()) throw new Error('The project root must be a directory.');
+    await access(root, constants.R_OK | constants.X_OK);
+    config.project_root = root;
+  }
 
   const keysPath = join(appHome, 'keys.json');
   let originalKeys, keys, changeKeys = false;
@@ -76,7 +78,7 @@ async function install() {
     }
     await writeFile(keysPath, json(keys));
   }
-  console.log(`Installed Worktree Launcher: ${target}\nProject root: ${root}\nNative module check passed.`);
+  console.log(`Installed Worktree Launcher: ${target}\nLocal project root: ${config.project_root || 'configure in the launcher'}\nNative module check passed.`);
   console.log(values['no-shortcut'] ? 'Shortcut unchanged.' : 'Shortcut: Cmd+Shift+G');
   console.log('Open: herdr-app do mod.open --name worktree-launcher');
 }
