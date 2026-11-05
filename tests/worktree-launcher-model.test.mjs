@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WorktreeModel, openCheckout } from '../mods/personal-worktrees/model.js';
+import { WorktreeModel, openCheckout } from '../mods/worktree-launcher/model.js';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const noTimeout = () => ({ promise: new Promise(() => {}), cancel: () => {} });
@@ -26,10 +26,26 @@ test('late choices and closed overlays cannot replace current form; selections r
   f.model.setName('branch'); f.model.selectRef(ref); late.resolve([{ ...ref, name: 'wrong' }]); await first;
   assert.equal(f.model.project, b); assert.equal(f.model.refs[0].name, 'main');
   assert.equal(f.model.setAction('new'), false); assert.equal(f.model.name, 'branch'); assert.equal(f.model.ref, ref);
-  assert.equal(f.model.setAction('existing'), true); assert.equal(f.model.ref, null); assert.equal(f.model.name, '');
+  assert.equal(f.model.setAction('existing'), true); assert.equal(f.model.ref, ref); assert.equal(f.model.name, '');
+  assert.equal(f.model.canCreate, true);
   const closed = deferred(); f.model.git.choices = () => closed.promise;
   const load = f.model.selectProject(a); assert.equal(f.model.close(), true); closed.resolve([ref]); await load;
   assert.equal(f.model.refs.length, 0);
+});
+
+test('a checked-out base survives action changes but cannot create an existing-branch checkout', async () => {
+  const f = setup(); await fill(f.model);
+  const checkedOut = { ...ref, reason: 'Checked out at /projects/A' };
+  f.model.selectRef(checkedOut);
+  assert.equal(f.model.canCreate, true);
+  f.model.setAction('existing');
+  assert.equal(f.model.ref, checkedOut); assert.equal(f.model.canCreate, false);
+  await f.model.submit(); assert.equal(f.mutations, 0);
+  f.model.selectRef(ref); assert.equal(f.model.canCreate, true);
+  f.model.setAction('new');
+  assert.equal(f.model.ref, ref); assert.equal(f.model.canCreate, false);
+  f.model.selectRef(checkedOut); f.model.setName('another-branch');
+  assert.equal(f.model.canCreate, true);
 });
 
 test('double submit admits one mutation; Escape keeps pending operation open', async () => {

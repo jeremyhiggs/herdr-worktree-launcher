@@ -1,4 +1,4 @@
-# Personal Worktrees for Herdr
+# Worktree Launcher for Herdr
 
 A native Herdr overlay for two Git workflows:
 
@@ -7,7 +7,7 @@ A native Herdr overlay for two Git workflows:
 
 The mod uses Herdr app/core, Git, and standard macOS utilities. It needs no Node process or other mod at runtime.
 
-See [installation and use](mods/personal-worktrees/README.md) and the [validation report](docs/validation/personal-worktrees.md).
+See [installation and use](mods/worktree-launcher/README.md) and the [validation report](docs/validation/worktree-launcher.md).
 
 The supplied shortcut is **Cmd+Shift+G**. Installation does not change your keybindings automatically.
 
@@ -34,7 +34,7 @@ It uses the installed Herdr app/core binaries with a temporary home, app configu
 
 Test zsh sessions load your normal startup files and use your normal shell history and cache. Herdr state and worktree destinations stay temporary.
 
-Worktrees opens automatically. Cmd+Shift+G applies only to this test window. The terminal prints the discovery root and configuration path.
+Worktree Launcher opens automatically. Cmd+Shift+G applies only to this test window. The terminal prints the discovery root and configuration path.
 
 For **New branch**, select `demo`, explicitly select `available` as the base, and enter `test/new`.
 
@@ -52,7 +52,7 @@ pnpm run test:app stop /path/printed/by/the/launcher
 
 The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
 
-Repository discovery reads `<app-home>/mods/personal-worktrees/config.json`:
+Repository discovery reads `<app-home>/mods/worktree-launcher/config.json`:
 
 ```json
 {
@@ -73,7 +73,7 @@ pnpm test
 Run the native module check:
 
 ```sh
-herdr-app check mods/personal-worktrees
+herdr-app check mods/worktree-launcher
 ```
 
 The test suite uses disposable Git repositories and local bare remotes. Node is a development dependency only.

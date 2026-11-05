@@ -1,4 +1,4 @@
-# Worktrees
+# Worktree Launcher
 
 ## Requirements
 
@@ -14,11 +14,11 @@ From the repository root, copy the distributable files:
 
 ```sh
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
-mkdir -p "$app_home/mods/personal-worktrees"
-cp mods/personal-worktrees/main.js mods/personal-worktrees/model.js \
-  mods/personal-worktrees/git.js mods/personal-worktrees/mod.json \
-  mods/personal-worktrees/config.example.json mods/personal-worktrees/keys.json \
-  mods/personal-worktrees/README.md "$app_home/mods/personal-worktrees/"
+mkdir -p "$app_home/mods/worktree-launcher"
+cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
+  mods/worktree-launcher/git.js mods/worktree-launcher/mod.json \
+  mods/worktree-launcher/config.example.json mods/worktree-launcher/keys.json \
+  mods/worktree-launcher/README.md "$app_home/mods/worktree-launcher/"
 ```
 
 Create `config.json` in the installed mod directory. Replace this example path with your project directory:
@@ -34,13 +34,13 @@ The mod does not expand `~` or choose a fallback directory. Configuration errors
 Run the module check against the installed directory:
 
 ```sh
-herdr-app check "$app_home/mods/personal-worktrees"
+herdr-app check "$app_home/mods/worktree-launcher"
 ```
 
 Open the overlay:
 
 ```sh
-herdr-app do mod.open --name personal-worktrees
+herdr-app do mod.open --name worktree-launcher
 ```
 
 ## Shortcut
@@ -50,7 +50,7 @@ The supplied `keys.json` contains:
 ```json
 {
   "global": {
-    "cmd-shift-g": "mod.open:personal-worktrees"
+    "cmd-shift-g": "mod.open:worktree-launcher"
   }
 }
 ```
@@ -59,12 +59,12 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 
 ## Use
 
-1. Open **Worktrees**.
+1. Open **Worktree Launcher**.
 2. Search for a project.
 3. Select a result from the project dropdown with the mouse or Up/Down and Enter.
 4. Choose **New branch** or **Existing branch**.
-5. For a new branch, explicitly select a base, then enter the new name.
-6. For an existing branch, select an available local or remote branch.
+5. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
+6. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
 7. Read the destination.
 8. Activate **Create** or press Cmd+Enter.
 
@@ -72,11 +72,13 @@ Enter in a search field selects a choice. It does not submit the form. Tab and S
 
 The new-name field stays disabled until you select a base. Each choice list opens below its own search field.
 
+The launcher uses Herdr's theme colors for light and dark themes. It follows system appearance when Herdr follows it; an explicit appearance setting in Herdr takes precedence.
+
 The mod reuses a space for the primary checkout or creates it first. Herdr groups the new worktree space beneath this project space.
 
 The mod requests Herdr's normal default shell, with no custom terminal command.
 
-Checked-out local branches show their checkout path. They remain available as bases for new branches.
+Checked-out local branches are disabled for Existing branch and show their checkout path. They remain available as bases for new branches. If you select one as a base and switch to Existing branch, Create stays disabled and the checkout path explains why.
 
 A remote selection creates its local branch and tracks that specific remote. A new branch has no upstream, including from a remote base.
 
@@ -110,7 +112,7 @@ The launcher pins `HC_SOCKET` to the temporary core so restored shell configurat
 
 If app opening fails after Git creation, select **Open created worktree**. This action never repeats Git creation.
 
-The mod saves its operation record in `<app-home>/data/personal-worktrees-operation.json` before Git creation.
+The mod saves its operation record in `<app-home>/data/worktree-launcher-operation.json` before Git creation.
 
 After a reload or window closure, the mod inspects this record and Git. A complete checkout offers the same open-only action.
 
@@ -130,6 +132,6 @@ For an update, repeat the source-file copy from Install. The copy excludes `conf
 
 Before removal, move `config.json` to a backup directory outside the mod folder.
 
-Then remove the installed `mods/personal-worktrees` directory and its optional keybinding. Preserve any recovery record until its operation is resolved.
+Then remove the installed `mods/worktree-launcher` directory and its optional keybinding. Preserve any recovery record until its operation is resolved.
 
 Removal does not remove Git worktrees, branches, app spaces, or unrelated app files.

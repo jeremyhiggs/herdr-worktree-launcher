@@ -1,6 +1,6 @@
-mods/personal-worktrees/config.json
+mods/worktree-launcher/config.json
 *.png
-mods/personal-worktrees/gpui-kit.d.ts
-mods/personal-worktrees/jsconfig.json
+mods/worktree-launcher/gpui-kit.d.ts
+mods/worktree-launcher/jsconfig.json
 node_modules/
 .pnpm-store/

@@ -13,7 +13,7 @@ if (Number.parseInt(process.versions.node, 10) < 24) {
 
 const execute = promisify(execFile);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const marker = '.personal-worktrees-test.json';
+const marker = '.worktree-launcher-test.json';
 const environment = root => {
   const env = { ...process.env, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'hw', HC_SOCKET: join(root, 'run/herdr-core/hw.sock'), ZDOTDIR: join(root, 'shell'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
   for (const key of ['HC_TERMINAL_ID', 'HERDR_SPACE_ID', 'HERDR_TAB_ID', 'HERDR_PANE_ID']) delete env[key];
@@ -50,17 +50,17 @@ async function start() {
   // A short path leaves room for macOS's Unix socket limit.
   const root = await realpath(await mkdtemp('/tmp/hw-'));
   console.log(`Test directory: ${root}`);
-  await writeFile(join(root, marker), JSON.stringify({ kind: 'personal-worktrees-test', ...binaries }));
+  await writeFile(join(root, marker), JSON.stringify({ kind: 'worktree-launcher-test', ...binaries }));
   let launched = false;
   try {
-    const mod = join(root, 'app/mods/personal-worktrees');
-    await Promise.all(['home', 'shell', 'projects', 'config', 'data', 'state', 'run', 'app/mods/personal-worktrees'].map(path => mkdir(join(root, path), { recursive: true })));
+    const mod = join(root, 'app/mods/worktree-launcher');
+    await Promise.all(['home', 'shell', 'projects', 'config', 'data', 'state', 'run', 'app/mods/worktree-launcher'].map(path => mkdir(join(root, path), { recursive: true })));
     const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
     const restore = ['HOME', 'ZDOTDIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR'].map(key => process.env[key] === undefined ? `unset ${key}` : `export ${key}=${quote(process.env[key])}`);
     const startup = join(process.env.ZDOTDIR ?? process.env.HOME, '.zshenv');
     restore.push(`if [[ -r ${quote(startup)} ]]; then source ${quote(startup)}; fi`, `export HC_SOCKET=${quote(join(root, 'run/herdr-core/hw.sock'))}`);
     await writeFile(join(root, 'shell/.zshenv'), `${restore.join('\n')}\n`, { mode: 0o600 });
-    for (const name of ['main.js', 'model.js', 'git.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md']) await copyFile(join(repository, 'mods/personal-worktrees', name), join(mod, name));
+    for (const name of ['main.js', 'model.js', 'git.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md']) await copyFile(join(repository, 'mods/worktree-launcher', name), join(mod, name));
     await copyFile(join(mod, 'keys.json'), join(root, 'app/keys.json'));
     await writeFile(join(root, 'app/settings.json'), JSON.stringify({ core: binaries.core, telemetry: false }));
     await writeFile(join(root, 'app/shared.json'), JSON.stringify({ 'frame.welcomed': 'skipped' }));
@@ -86,8 +86,8 @@ async function start() {
     const spaces = JSON.parse(await run(root, binaries.app, ['ls']));
     const terminals = JSON.parse(await run(root, binaries.core, ['ls']));
     if (spaces.spaces?.length !== 0 || terminals.terminals?.length !== 0) throw new Error('Expected an empty isolated app and core.');
-    await run(root, binaries.app, ['do', 'mod.open', '--name', 'personal-worktrees']);
-    await waitForStatus(root, binaries.app, status => status.overlays?.includes('personal-worktrees'), 'The Worktrees overlay did not open within 30 seconds.');
+    await run(root, binaries.app, ['do', 'mod.open', '--name', 'worktree-launcher']);
+    await waitForStatus(root, binaries.app, status => status.overlays?.includes('worktree-launcher'), 'The Worktree Launcher overlay did not open within 30 seconds.');
     console.log(`Repository discovery root: ${join(root, 'projects')}`);
     console.log(`Configuration: ${join(mod, 'config.json')}`);
     console.log('Test zsh uses your normal startup files, history and cache; Herdr state and worktrees stay temporary.');
@@ -112,8 +112,14 @@ try {
     try {
       const info = await lstat(root);
       if (info.isSymbolicLink() || !info.isDirectory() || info.uid !== process.getuid()) throw new Error();
-      metadata = JSON.parse(await readFile(join(root, marker), 'utf8'));
-      if (metadata.kind !== 'personal-worktrees-test') throw new Error();
+      let record;
+      try { record = await readFile(join(root, marker), 'utf8'); }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        record = await readFile(join(root, '.personal-worktrees-test.json'), 'utf8');
+      }
+      metadata = JSON.parse(record);
+      if (!['worktree-launcher-test', 'personal-worktrees-test'].includes(metadata.kind)) throw new Error();
     } catch { throw new Error('Not an owned isolated test directory. Use the path printed by test:app.'); }
     await stop(root, metadata);
     console.log(`Stopped isolated test app/core. Test files preserved at ${root}`);

@@ -1,5 +1,5 @@
 {
-  "name": "personal-worktrees",
+  "name": "worktree-launcher",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.6",
@@ -8,7 +8,7 @@
     "pnpm": ">=11 <12"
   },
   "scripts": {
-    "test": "node --test tests/personal-worktrees-*.test.mjs",
+    "test": "node --test tests/worktree-launcher-*.test.mjs",
     "test:app": "node scripts/test-app.mjs"
   }
 }

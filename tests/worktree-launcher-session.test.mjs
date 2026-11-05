@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 const execute = promisify(execFile);
 const launcher = resolve('scripts/test-app.mjs');
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'worktrees-launcher-'));
+  const root = await mkdtemp(join(tmpdir(), 'worktree-launcher-'));
   const bin = join(root, 'bin'), events = join(root, 'events.jsonl');
   await mkdir(bin); await writeFile(events, '');
   const userHome = join(root, "user's home"); await mkdir(userHome);
@@ -30,7 +30,7 @@ if (args[0]==='status') {
   visible=existsSync(state) && Number(readFileSync(state,'utf8'))>0;
   if (existsSync(state)) writeFileSync(state,String(Number(readFileSync(state,'utf8'))+1));
  }
- console.log(JSON.stringify({errors:[],overlays:visible?['personal-worktrees']:[]}));
+ console.log(JSON.stringify({errors:[],overlays:visible?['worktree-launcher']:[]}));
 }
 else if (args[0]==='ls') console.log(JSON.stringify({spaces:[],terminals:[]}));
 `;
@@ -53,10 +53,10 @@ test('isolated launcher configures disposable discovery, fixtures, shortcut and 
   const result = await f.run(); const root = f.remember(result.stdout);
   assert(root);
   assert.match(result.stdout, /Stop: pnpm run test:app stop /);
-  const config = JSON.parse(await readFile(join(root, 'app/mods/personal-worktrees/config.json'), 'utf8'));
+  const config = JSON.parse(await readFile(join(root, 'app/mods/worktree-launcher/config.json'), 'utf8'));
   assert.equal(config.project_root, join(root, 'projects'));
   const keys = JSON.parse(await readFile(join(root, 'app/keys.json'), 'utf8'));
-  assert.equal(keys.global['cmd-shift-g'], 'mod.open:personal-worktrees');
+  assert.equal(keys.global['cmd-shift-g'], 'mod.open:worktree-launcher');
   const settings = JSON.parse(await readFile(join(root, 'app/settings.json'), 'utf8'));
   assert.equal(settings.core, join(f.bin, 'hc'));
   const git = async (...args) => (await execute('git', ['-C', join(root, 'projects/demo'), ...args])).stdout.trim();
@@ -66,7 +66,7 @@ test('isolated launcher configures disposable discovery, fixtures, shortcut and 
   assert(await git('rev-parse', '--verify', 'refs/remotes/origin/remote-only'));
   await f.run(['stop', root]);
   const records = await f.records();
-  assert(records.some(r => r.args.join(' ') === 'do mod.open --name personal-worktrees'));
+  assert(records.some(r => r.args.join(' ') === 'do mod.open --name worktree-launcher'));
   assert(records.some(r => r.args.join(' ') === 'do app.quit'));
   assert(records.some(r => r.binary === 'hc' && r.args.join(' ') === 'server stop'));
   for (const record of records) {
@@ -84,6 +84,19 @@ test('stop refuses an unmarked directory before invoking an app or core', async 
   const f = await fixture(t);
   await assert.rejects(f.run(['stop', f.root]), /isolated test directory/);
   assert.deepEqual(await f.records(), []);
+});
+
+test('renamed launcher can still stop an isolated session created under the old project name', async t => {
+  const f = await fixture(t); const result = await f.run(); const root = f.remember(result.stdout);
+  const marker = join(root, '.worktree-launcher-test.json');
+  const metadata = JSON.parse(await readFile(marker, 'utf8'));
+  await writeFile(join(root, '.personal-worktrees-test.json'), JSON.stringify({ ...metadata, kind: 'personal-worktrees-test' }));
+  await rm(marker);
+  await f.run(['stop', root]);
+  const records = await f.records();
+  assert(records.some(r => r.args.join(' ') === 'do app.quit'));
+  assert(records.some(r => r.binary === 'hc' && r.args.join(' ') === 'server stop'));
+  assert(records.every(r => r.env.HERDR_APP_HOME === join(root, 'app')));
 });
 
 test('failed overlay opening stops only the newly prepared app and core and retains its log', async t => {
@@ -118,7 +131,7 @@ test('launcher waits for the overlay to appear after the open command returns', 
   const f = await fixture(t); const result = await f.run([], { PW_TEST_DELAY_OVERLAY: '1' });
   const root = f.remember(result.stdout); assert(root);
   const records = await f.records();
-  assert.equal(records.filter(r => r.args.join(' ') === 'do mod.open --name personal-worktrees').length, 1);
+  assert.equal(records.filter(r => r.args.join(' ') === 'do mod.open --name worktree-launcher').length, 1);
   assert(records.filter(r => r.args.join(' ') === 'status').length >= 3);
   await f.run(['stop', root]);
 });

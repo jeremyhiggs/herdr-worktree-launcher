@@ -1,4 +1,4 @@
-# Personal Worktrees validation
+# Worktree Launcher validation
 
 Date: 2026-10-31.
 
@@ -128,7 +128,7 @@ All three code findings were resolved after review of the original snapshot. The
 
 ## Isolated test command
 
-`pnpm run test:app` prepares a temporary app home, core store, and two disposable Git clones. It opens Worktrees automatically.
+`pnpm run test:app` prepares a temporary app home, core store, and two disposable Git clones. It opens Worktree Launcher automatically.
 
 The command sets `project_root` to the temporary `projects` directory and prints its configuration path and scoped stop command.
 
@@ -174,6 +174,24 @@ A real zsh probe loaded the user's ll alias and reported the same core identity 
 
 Disposable Git fixture commits explicitly disable signing. This avoids waiting on the user's signer and does not change repository or global Git configuration.
 
-The launcher also waits until Worktrees is observed after mod.open. Fresh test app state skips the first-run welcome screen.
+The launcher also waits until Worktree Launcher is observed after mod.open. Fresh test app state skips the first-run welcome screen.
 
 Feedback evidence remains in scratch directories. Keyboard, mouse, and shortcut acceptance is still incomplete.
+
+## Form order follow-up — 2026-11-05
+
+The overlay title is Worktree Launcher. The form now shows Project, the New/Existing actions, Base branch (Branch for Existing branch), and a name field for New branch only. The labels no longer say “select explicitly”. Tab order follows the fields, and action changes preserve the selected branch.
+
+Checked-out branches remain available as new-branch bases. Existing branch disables these choices and shows their checkout path. Switching to Existing branch with a checked-out base selected preserves the selection, shows its reason, and disables Create.
+
+The branch-selection regression checks selection retention, blocked submission for a checked-out branch, and reuse as a base after switching back.
+
+The native module check and renamed isolated launcher passed with Herdr app 0.1.13 and core 0.1.18 installed. The final preview showed the new title and field order without mod errors. Light and dark screenshots were inspected at `/private/tmp/hw-VPDfR7/light.png` and `/private/tmp/hw-VPDfR7/dark.png`, outside tracked source.
+
+The launcher uses Herdr's semantic theme colors. The installed app guide confirms that these colors follow both light and dark themes, and that system appearance applies unless overridden by Herdr settings. No live theme settings were changed.
+
+This follow-up does not complete the outstanding physical keyboard, mouse, or shortcut acceptance and does not install the mod in the live app.
+
+The package, mod directory, shortcut target, tests, and documentation now use `worktree-launcher`. The checkout directory remains `herdr-worktree` at the user's request. The isolated launcher's stop command still recognizes sessions created under the old project name.
+
+`pnpm test` passed all 35 tests under Node 24.22.1 after the rename. The user also reported that the plugin UI looks good; this feedback does not establish each outstanding keyboard and mouse scenario.

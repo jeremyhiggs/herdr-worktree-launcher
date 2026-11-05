@@ -129,7 +129,7 @@ export class WorktreeModel {
   }
   setAction(action) {
     if (!this.editable || this.action === action) return false;
-    this.action = action; this.ref = null; this.name = ''; this.error = '';
+    this.action = action; this.name = ''; this.error = '';
     return true;
   }
   setName(name) { if (this.editable) { this.name = name; this.error = ''; } }

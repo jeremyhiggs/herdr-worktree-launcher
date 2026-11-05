@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createGit } from '../mods/personal-worktrees/git.js';
+import { createGit } from '../mods/worktree-launcher/git.js';
 
 const execute = promisify(execFile);
 const runner = async (command, args, options) => {
@@ -14,7 +14,7 @@ const runner = async (command, args, options) => {
 };
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 async function fixture(t) {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), 'personal-worktrees-')));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'worktree-launcher-')));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const root = join(dir, 'projects'), home = join(dir, 'home');
   await mkdir(root); await mkdir(home);

@@ -4,7 +4,7 @@ import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, run, t
 import { createGit } from './git.js';
 import { WorktreeModel, openCheckout } from './model.js';
 
-export default class Worktrees extends View {
+export default class WorktreeLauncher extends View {
   init(_props, cx) {
     this.handle = cx.focus_handle();
     this.scroll = VirtualListScrollHandle.new();
@@ -33,8 +33,8 @@ export default class Worktrees extends View {
       });
     }
     const git = createGit(exec, home());
-    const configPath = `${appHome()}/mods/personal-worktrees/config.json`;
-    const recordPath = `${appHome()}/data/personal-worktrees-operation.json`;
+    const configPath = `${appHome()}/mods/worktree-launcher/config.json`;
+    const recordPath = `${appHome()}/data/worktree-launcher-operation.json`;
     let snapshot = null;
     this.model = new WorktreeModel({
       git,
@@ -47,7 +47,7 @@ export default class Worktrees extends View {
         load: async () => {
           snapshot = await readTextFile(recordPath);
           try { return snapshot ? JSON.parse(snapshot) : null; }
-          catch { throw new Error('Recovery record is unreadable. Inspect data/personal-worktrees-operation.json before creating another worktree.'); }
+          catch { throw new Error('Recovery record is unreadable. Inspect data/worktree-launcher-operation.json before creating another worktree.'); }
         },
         save: async request => {
           const next = JSON.stringify(request);
@@ -109,7 +109,7 @@ export default class Worktrees extends View {
       this.openField = null;
       this.task(cx, async () => {
         await this.model.selectProject(row);
-        if (!this.model.closed && this.model.project?.id === row.id && this.model.phase === 'editing') this.inputs.ref.focus();
+        if (!this.model.closed && this.model.project?.id === row.id && this.model.phase === 'editing') this.buttons[this.model.action].focus();
       });
     } else {
       if (this.model.action === 'existing' && row.reason) return;
@@ -117,6 +117,7 @@ export default class Worktrees extends View {
       this.showChoice('ref', row.label);
       this.openField = null;
       if (this.model.action === 'new') this.inputs.name.focus();
+      else this.buttons.create.focus();
       cx.notify();
     }
   }
@@ -132,7 +133,7 @@ export default class Worktrees extends View {
 
   key(event, cx) {
     if (event.key === 'tab') {
-      const order = ['new', 'existing', 'project', ...(this.model.project ? ['ref'] : []), ...(this.model.action === 'new' && this.model.ref ? ['name'] : []), 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
+      const order = ['project', 'new', 'existing', ...(this.model.project ? ['ref'] : []), ...(this.model.action === 'new' && this.model.ref ? ['name'] : []), 'refresh', 'close', this.model.phase === 'recover' ? 'open-created' : 'create'];
       const current = this.activeInput || order.find(key => this.buttons[key]?.is_focused());
       const step = event.modifiers.shift ? -1 : 1;
       const next = order[(Math.max(0, order.indexOf(current)) + step + order.length) % order.length];
@@ -185,18 +186,19 @@ export default class Worktrees extends View {
       .bg(t.input).text_color(t.foreground);
     const picker = field => Popup.new(`worktree-${field}-picker`, div().w_full().on_click((_e, cx) => { this.field = field; this.openField = field; cx.notify(); }).child(input(field)))
       .w_full().anchor('top_left').when(this.openField === field && m.editable, el => el.content(this.choiceList(field, t)));
-    return v_flex().id('personal-worktrees').track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+    return v_flex().id('worktree-launcher').track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .on_size_change((size, cx) => { if (this.width !== size.width) { this.width = size.width; cx.notify(); } })
       .on_mouse_down('left', (_e, cx) => cx.stop_propagation())
       .size_full().p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(13)
       .child(h_flex().items_center().justify_between()
-        .child(div().text_size(17).font_semibold().child('Worktrees'))
-        .child(button('refresh', 'Refresh', (_e, cx) => { this.clearInputs(); this.inputs.project.set_value(''); this.filters.project = ''; this.field = 'project'; this.task(cx, () => m.refresh()); }, m.busy, false, 6)))
-      .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) { this.clearInputs(); if (m.project) this.inputs.ref.focus(); } cx.notify(); }, !m.editable, m.action === action, i))))
-      .child(label(`Project${m.project ? ` · ${m.project.label}` : ' · select explicitly'}`))
+        .child(div().text_size(17).font_semibold().child('Worktree Launcher'))
+        .child(button('refresh', 'Refresh', (_e, cx) => { this.clearInputs(); this.inputs.project.set_value(''); this.filters.project = ''; this.field = 'project'; this.task(cx, () => m.refresh()); }, m.busy, false, 5)))
+      .child(label('Project'))
       .child(picker('project'))
-      .child(label(`${m.action === 'new' ? 'Base' : 'Branch'}${m.ref ? ` · ${m.ref.label}` : ' · select explicitly'}`))
+      .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) this.inputs.name.set_value(''); this.openField = null; if (m.project) this.inputs.ref.focus(); cx.notify(); }, !m.editable, m.action === action, i + 1))))
+      .child(label(m.action === 'new' ? 'Base branch' : 'Branch'))
       .child(picker('ref'))
+      .when(m.action === 'existing' && Boolean(m.ref?.reason), el => el.child(div().text_size(11).text_color(t.blocked).child(m.ref.reason)))
       .when(m.action === 'new', el => el.child(label('New branch name')).child(input('name')))
       .child(div().flex_1())
       .child(label('Destination'))
@@ -204,9 +206,9 @@ export default class Worktrees extends View {
       .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().text_color(t.blocked).child(m.error)))
       .when(m.phase === 'partial', el => el.child(div().text_size(11).text_color(t.muted).child('Creation is blocked until this operation is inspected. See recovery instructions in the README.')))
       .child(h_flex().gap(8).justify_end()
-        .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 7))
-        .when(m.phase === 'recover', el => el.child(button('open-created', 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 8)))
-        .when(m.phase !== 'recover', el => el.child(button('create', m.busy ? 'Finishing…' : 'Create', (_e, cx) => this.task(cx, open => m.submit(open)), !m.canCreate, true, 8))))
+        .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 6))
+        .when(m.phase === 'recover', el => el.child(button('open-created', 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))
+        .when(m.phase !== 'recover', el => el.child(button('create', m.busy ? 'Finishing…' : 'Create', (_e, cx) => this.task(cx, open => m.submit(open)), !m.canCreate, true, 7))))
       .child(div().text_size(10.5).text_color(t.dim).child('↑↓ choose · Enter selects · Tab changes field · Cmd+Enter creates · Esc closes'));
   }
 }
