@@ -1,107 +1,124 @@
-# Worktree Launcher for Herdr
+# Worktree Launcher
 
-A native Herdr overlay for local and connected Linux/macOS machines, with two Git workflows:
+Create Git worktrees without leaving Herdr. Choose a project, select a branch, and open a shell or coding agent.
 
-- Create a worktree on an existing local or fetched remote branch.
-- Create a new branch from an explicitly selected local or remote base.
-- Open the worktree in a shell or an installed Claude Code, Pi, OpenCode, or Codex session.
+Worktree Launcher supports local projects and connected Linux or macOS machines. It keeps your primary checkout intact and opens each worktree in its own Herdr space.
 
-The mod uses Herdr app/core, Git, and standard macOS utilities. It needs no Node process or other mod at runtime.
-
-See [installation and use](mods/worktree-launcher/README.md) and the [validation report](docs/validation/worktree-launcher.md).
+![Worktree Launcher ready to create feature/rate-limits from main](docs/screenshots/new-branch.png)
 
 ## Install
 
-With Node 24 or newer and pnpm 11.x, run:
+You need:
+
+- Herdr for macOS, with `herdr-app` and `hc` available in your terminal.
+- Git and Bash on each machine that will contain worktrees.
+- Node.js 24 or newer and pnpm 11.x for installation only.
+
+Download or clone this repository. In your terminal, change into its directory, then run:
 
 ```sh
 pnpm run install:mod
 ```
 
-The installer adds **Cmd+Shift+G** if it is unassigned, preserves other bindings, and checks native module loading. Open the launcher, choose a machine, and configure its project root with **Save**. Local setup also offers **Browse**. Use `--no-shortcut` to leave keybindings unchanged.
+The installer copies the mod, checks it with your installed Herdr, and adds **⌘⇧G** (Command+Shift+G). It preserves existing settings and keybindings.
 
-For updates, run `pnpm run install:mod --update`. This preserves your configuration. See the [installation guide](mods/worktree-launcher/README.md#install) for custom app homes and manual installation.
+A dependency installation with `pnpm install` is not required.
 
-## Development
-
-Development requires Node **24 or newer** and **pnpm 11.x**. The repository pins pnpm 11.28.6 and enforces both engine requirements.
-
-With nvm, select Node 24:
+If that shortcut is already assigned, use `pnpm run install:mod --no-shortcut`. You can open the launcher from your terminal:
 
 ```sh
-nvm use
-pnpm install --frozen-lockfile
+herdr-app do mod.open --name worktree-launcher
 ```
 
-Open an isolated test window:
+The installed mod needs no Node process or additional mod. It was checked with Herdr app 0.1.13 and core 0.1.18.
+
+## Create your first worktree
+
+1. Press **⌘⇧G** to open **Worktree Launcher**.
+2. Select **Local** or a connected machine.
+3. Use **Browse…** to choose the directory that contains your projects.
+4. Select **Save**.
+5. Search for your project and select it.
+6. Select **New branch**.
+7. Select a **Base branch**.
+8. Enter a **New branch name**, such as `feature/rate-limits`.
+9. Keep **Open with** set to **Shell**, or select an available agent.
+10. Check the destination, then select **Create** or press **Enter**.
+
+You can also enter an absolute project-root path directly. The launcher saves a separate root for each machine. The root field stays visible for later changes.
+
+### Use an existing branch
+
+Select **Existing branch**, then choose a local or fetched remote branch. The branch-name field disappears.
+
+Branches that already have a checkout appear disabled, with their checkout paths. You can still use these branches as bases for new branches.
+
+![Existing-branch picker showing an unavailable checked-out branch and its path](docs/screenshots/existing-branch.png)
+
+The launcher uses the refs already on your machine. To see newer remote branches, fetch them in your repository before opening the launcher.
+
+### Open a coding agent
+
+**Open with** defaults to **Shell**. It also offers Claude Code, Pi, OpenCode, and Codex when Herdr detects them on the selected machine.
+
+The selected agent starts in the worktree with its Herdr launch settings. The primary project keeps its existing terminals.
+
+![Open with menu offering Shell and the agents available in this sample installation](docs/screenshots/open-with.png)
+
+### Find the result
+
+The launcher opens the worktree in a Herdr space and reuses the primary project space when available. Herdr's standard sidebar groups worktrees beneath their project.
+
+![A new worktree grouped beneath sample-api with its shell open](docs/screenshots/worktree-opened.png)
+
+Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. For example, `feature/rate-limits` becomes `sample-api/feature-rate-limits`.
+
+The repository name comes from its `origin` URL, or its primary checkout folder when no origin exists. An occupied destination stops creation.
+
+## Work on a remote machine
+
+1. Add the machine in Herdr with **Add machine**.
+2. Open Worktree Launcher.
+3. Select the machine in **Machine**.
+4. Use **Browse…** to list its directories, or enter an absolute remote path.
+5. Select **Save**.
+
+Project discovery, Git commands, worktrees, and agents all use the selected machine. Only the desktop app needs the mod. Remote machines need no Node installation.
+
+## Keyboard controls
+
+| Key | Action |
+| --- | --- |
+| ⌘⇧G | Open the launcher |
+| ↑ / ↓ | Move through an open choice list |
+| Enter | Select an open choice, or create when the form is ready |
+| Enter in Project root | Save the root |
+| ⌘Enter | Create directly, or save when Project root has focus |
+| Tab / Shift+Tab | Move between controls |
+| Esc | Close the launcher when no operation is in progress |
+
+The UI follows Herdr's light or dark theme, including system appearance when Herdr uses it. Destination paths and error messages support text selection.
+
+## Update
+
+From an updated copy of this repository, run:
 
 ```sh
-pnpm run test:app
+pnpm run install:mod --update
 ```
 
-The command copies the current mod and creates two disposable repositories: `demo` and `other-demo`.
+Updates preserve saved roots and recovery records. Installation does not restart Herdr or its core.
 
-It uses the installed Herdr app/core binaries with a temporary home, app configuration, core session, and XDG directories.
+## Need help?
 
-Test zsh sessions load your normal startup files and use your normal shell history and cache. Herdr state and worktree destinations stay temporary.
+- **No projects:** check the selected machine and root, then select **Refresh**.
+- **Cannot read a local folder:** check Herdr's permissions in System Settings → Privacy & Security → Files and Folders.
+- **Git succeeded but the space did not open:** select **Open created worktree** to retry without creating another checkout.
 
-Worktree Launcher opens automatically. Cmd+Shift+G applies only to this test window. The terminal prints the discovery root and configuration path.
+See [settings and troubleshooting](docs/worktree-launcher.md) for manual installation, recovery, and removal.
 
-For **New branch**, select `demo`, explicitly select `available` as the base, and enter `test/new`.
+For contributors, see [development](docs/development.md) and the [validation report](docs/validation/worktree-launcher.md).
 
-For **Existing branch**, select local `available` or remote `origin/remote-only`. Both repositories contain these choices.
-
-Projects appear in a dropdown below Search projects. Branch choices appear below their own field.
-
-The mod opens the primary checkout as a project space when needed. Herdr groups its worktree spaces beneath it.
-
-The terminal also prints a stop command:
-
-```sh
-pnpm run test:app stop /path/printed/by/the/launcher
-```
-
-The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
-
-Repository discovery reads `<app-home>/data/worktree-launcher-config.json`. The UI can create this configuration and stores roots independently:
-
-```json
-{
-  "project_root": "/absolute/path/to/local/projects",
-  "remote_project_roots": {
-    "devbox": "/absolute/path/on/devbox"
-  }
-}
-```
-
-The test command sets `project_root` to `<test-directory>/projects`. Normal installation uses your own absolute directory, with no fallback to `~/Documents/Code`.
-
-Discovery searches below this directory. Build directories, ignored repositories, bare repositories, and duplicate linked worktrees remain excluded.
-
-Run the tests with Node:
-
-```sh
-pnpm test
-```
-
-Run the native module check:
-
-```sh
-herdr-app check mods/worktree-launcher
-```
-
-The test suite uses disposable Git repositories and local bare remotes. Node is a development dependency only.
-
-`git.js` owns machine routing, repository discovery, and Git operations. `config.js` stores project roots. `model.js` owns form state and recovery. `main.js` owns the native overlay.
-
-An opt-in integration test creates and removes disposable repositories on a connected machine:
-
-```sh
-WORKTREE_TEST_MACHINE=devbox node --test tests/worktree-launcher-remote.test.mjs
-```
-
-Discovery follows the policies in the earlier Herdr worktree workflow bundle. This repository contains the standalone desktop mod.
-
-The implementation plan remains in the separate `herdr-worktree-workflows` repository. The original Launcher scripts remain there unchanged.
+Screenshots use disposable sample projects in a separate Herdr installation. Only agents detected in that installation appear.
 
 License: [MIT](LICENSE).

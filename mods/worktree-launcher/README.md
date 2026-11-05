@@ -1,195 +1,115 @@
 # Worktree Launcher
 
-## Requirements
+A native Herdr overlay for Git worktrees on local and connected Linux or macOS machines.
 
-- macOS with Herdr app/core.
-- Git, `find`, `realpath`, `test`, and `mkdir` on each target machine.
-- Linux or macOS for remote targets, connected through Herdr Core.
-- Bash at `/bin/bash` on each target for batched project discovery.
-- One absolute, readable project directory per machine, configured in the launcher.
+## Install or update
 
-The mod was checked with Herdr app 0.1.13 and core 0.1.18. The installer runs a fresh module check on your installed version.
-
-## Install
-
-From the repository root, run:
+From the source repository, run:
 
 ```sh
 pnpm run install:mod
 ```
 
-Installation requires Node 24 or newer and pnpm 11.x. The installed mod does not need Node or pnpm.
-
-The installer copies the mod into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher`, checks native loading, and adds Cmd+Shift+G. Open the launcher to configure project roots. To set the local root during installation, add `--project-root "$HOME/Documents/Code"`.
-
-Existing keybindings are preserved. The installer backs up `keys.json` before adding the shortcut. If Cmd+Shift+G is already assigned, installation stops before copying files. Add `--no-shortcut` to install while keeping that binding.
-
-An existing mod directory requires `--update`. This replaces its distributable code files and preserves project-root settings, recovery records, and unrelated files. Supply `--project-root` again only to change that setting.
+For an existing installation, run:
 
 ```sh
 pnpm run install:mod --update
 ```
 
-The installer does not start or restart the app/core, open spaces, or fetch Git refs. Open the installed launcher with Cmd+Shift+G or:
+The installer requires Node 24 or newer, pnpm 11.x, and `herdr-app` in your terminal. The installed mod needs no Node process or additional mod.
+
+It copies files into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher` and runs a native loading check. Updates preserve saved roots and recovery records.
+
+The installer adds **⌘⇧G** (Command+Shift+G) unless it already has another action. To preserve a conflicting shortcut, add `--no-shortcut`.
+
+Open with **⌘⇧G**, or run:
 
 ```sh
 herdr-app do mod.open --name worktree-launcher
 ```
 
-Herdr's [mod installation guidance](https://github.com/herdrdev/herdr-app/blob/master/defaults/AGENTS.md#layouts-and-mods-other-people-made) recommends copying mod files, merging keys without replacing existing bindings, and running `herdr-app check`. Mods belong to the app; herdr-core runs terminals and needs no separate mod installation.
+## First use
 
-### Manual installation
-
-To install without the script, copy the distributable files:
-
-```sh
-app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
-mkdir -p "$app_home/mods/worktree-launcher"
-cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
-  mods/worktree-launcher/git.js mods/worktree-launcher/config.js mods/worktree-launcher/mod.json \
-  mods/worktree-launcher/config.example.json mods/worktree-launcher/keys.json \
-  mods/worktree-launcher/README.md "$app_home/mods/worktree-launcher/"
-```
-
-Open the launcher to configure its roots, or create `<app-home>/data/worktree-launcher-config.json`. Local and remote paths belong to their respective machines:
-
-```json
-{
-  "project_root": "/absolute/path/to/local/projects",
-  "remote_project_roots": {
-    "devbox": "/absolute/path/on/devbox"
-  }
-}
-```
-
-The mod does not expand `~`. Select Browse to choose a local folder or list folders on the selected remote machine. Remote browsing starts at the entered absolute path, or at the remote home when the field is empty. Select a child folder or the parent entry to navigate, then Save to use the displayed directory. The saved path stays visible and editable. Configuration errors appear in the overlay.
-
-Mutable settings live outside the watched mod folder, so saving does not reload the launcher. The installer migrates an existing `mods/worktree-launcher/config.json`, preserving all machine roots and unrelated settings. The launcher also reads that legacy file when the new settings file is absent; its next save writes the new location.
-
-Run the module check against the installed directory:
-
-```sh
-herdr-app check "$app_home/mods/worktree-launcher"
-```
-
-Open the overlay:
-
-```sh
-herdr-app do mod.open --name worktree-launcher
-```
-
-## Shortcut
-
-The supplied `keys.json` contains:
-
-```json
-{
-  "global": {
-    "cmd-shift-g": "mod.open:worktree-launcher"
-  }
-}
-```
-
-Merge this entry into the app-home `keys.json`. Preserve its other entries. Do not replace an existing binding without approval.
-
-## Use
-
-1. Open **Worktree Launcher**.
-2. Select **Local** or a connected machine, such as **devbox**. The initial target follows the active space.
-3. Enter an absolute project root or use **Browse**, then select **Save**. Remote paths are validated on that remote machine. **Saving…** appears on Save until the save and project refresh finish; the other controls are disabled during that operation.
-4. Search for a project and select a result with the mouse or Up/Down and Enter.
+1. Select **Local** or a connected machine.
+2. Use **Browse…** to choose the directory that contains your projects, or enter its absolute path.
+3. Select **Save**.
+4. Search for a project and select it.
 5. Choose **New branch** or **Existing branch**.
-6. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
-7. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
-8. Read the destination and choose **Open with**: Shell (the default), Claude Code, Pi, OpenCode, or Codex. Only agents installed on the selected machine appear.
-9. Activate **Create** or press Enter when the form is ready. Enter selects an open dropdown choice first. Cmd+Enter creates directly.
+6. Select a branch. For a new branch, this is the base.
+7. For a new branch, enter its name.
+8. Choose **Open with**: **Shell** or an available coding agent.
+9. Check the destination, then select **Create** or press **Enter**.
 
-The project-root field always remains visible. Changing machine clears the previous machine's path immediately and displays the selected machine's saved root before project discovery finishes. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
+The launcher saves a separate project root for each machine. Remote browsing lists folders on the selected machine. No remote mod or Node installation is necessary.
 
-The UI mod is installed only in the local app. Remote discovery, validation, and Git commands use Herdr Core on the selected machine. No separate remote mod or Node installation is needed.
+Each target needs Git, `/bin/bash`, `find`, `realpath`, `test`, and `mkdir`. The mod was checked with Herdr app 0.1.13 and core 0.1.18.
 
-Project discovery batches filesystem and Git metadata checks into one Bash scan on the selected machine. This avoids thousands of calls through the app for large local roots and avoids remote round trips. Refresh always scans again. Branch selection and creation still revalidate current repository state. A failed or truncated scan reports an error instead of showing a partial project list.
+## Branches and programs
 
-Enter in an open search dropdown selects a choice. Enter from the completed branch-name field or the ready form creates the worktree. Enter in Project root saves that configuration. Tab and Shift+Tab move between controls.
+The branch picker includes local and fetched remote branches. The launcher does not fetch automatically.
 
-Agent availability and launch commands come from Herdr's configured programs on the selected machine. Agent detection runs alongside discovery. The selected program opens in the new worktree; the primary project space keeps its existing terminals. An existing matching worktree space receives a new program tab when needed. An open-only retry reuses a matching running program instead of starting another one. The recovery screen allows changing **Open with** before retrying.
+Checked-out branches show their paths and are unavailable for **Existing branch**. They remain available as bases for **New branch**.
 
-The new-name field stays disabled until you select a base. Each choice list opens below its own search field.
+An existing remote branch creates a local branch that tracks that remote. A new branch has no upstream.
 
-The launcher uses Herdr's theme colors for light and dark themes. It follows system appearance when Herdr follows it; an explicit appearance setting in Herdr takes precedence.
+**Open with** defaults to **Shell**. Claude Code, Pi, OpenCode, and Codex appear when Herdr detects them on the selected machine. Agents use their Herdr launch settings.
 
-Error messages, checkout explanations, and destination paths support text selection and copying. Buttons and choice rows retain their normal control behavior.
+The launcher creates or reuses the primary project space, then opens the worktree space. Herdr's standard sidebar groups worktrees beneath their project. No `spaces-grouped` mod is required.
 
-The mod reuses a space for the primary checkout or creates it first. Herdr groups the new worktree space beneath this project space.
+## Controls
 
-Shell uses Herdr's normal default shell. An agent uses its configured Herdr launch command.
+| Key | Action |
+| --- | --- |
+| ↑ / ↓ | Move through an open choice list |
+| Enter | Select a choice, or create when the form is ready |
+| Enter in Project root | Save the root |
+| ⌘Enter | Create directly, or save when Project root has focus |
+| Tab / Shift+Tab | Move between controls |
+| Esc | Close when no operation is in progress |
 
-Checked-out local branches are disabled for Existing branch and show their checkout path. They remain available as bases for new branches. If you select one as a base and switch to Existing branch, Create stays disabled and the checkout path explains why.
+**Refresh** reloads settings and scans for projects. The UI follows Herdr's theme. Error messages and destination paths support text selection.
 
-A remote selection creates its local branch and tracks that specific remote. A new branch has no upstream, including from a remote base.
+## Paths and settings
 
-Refresh rereads the configuration and discovers projects again. Opening the overlay also refreshes it.
+Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. The repository name comes from `origin`, or the primary checkout folder when no origin exists.
 
-## Destination and limits
+For example, branch `feature/search` in `sample-api` uses `~/.herdr/worktrees/sample-api/feature-search`. An occupied destination stops creation. Existing worktrees keep their paths.
 
-The destination is `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine, using that machine's home directory. The repository name comes from the configured `origin` URL, without its `.git` suffix. Without an origin, the primary checkout folder supplies the name. For example, a checkout at `OlympusDAO/coingecko-api/master` with a `coingecko-api.git` origin uses `worktrees/coingecko-api/<branch-slug>`.
+Roots live in `<app-home>/data/worktree-launcher-config.json`:
 
-The slug replaces runs outside ASCII letters, digits, dot, underscore, and hyphen with a hyphen. It trims outer hyphens.
+```json
+{
+  "project_root": "/absolute/projects",
+  "remote_project_roots": {
+    "devbox": "/srv/projects"
+  }
+}
+```
 
-Repositories with the same name can collide. Different branch names can also produce the same slug. An occupied destination stops creation. Existing worktrees stay at their current paths.
+Paths must be absolute. The launcher does not expand `~` or environment variables in this file. Old `mods/worktree-launcher/config.json` settings migrate on save or installation.
 
-The mod rejects symlinks in existing worktree-store ancestors. The home directory itself can resolve through a symlink.
+Discovery excludes ignored repositories, build directories, bare repositories, native JJ-only workspaces, and duplicate linked worktrees.
 
-Discovery excludes build directories, ignored nested repositories, bare repositories, and native JJ-only workspaces. Linked Git worktrees share one primary-project identity.
+## Troubleshooting and recovery
 
-The mod uses fetched refs without fetching. It preserves changes in the primary checkout. Git hooks retain their normal behavior.
+If projects are missing, check the machine and root, then select **Refresh**. For local folder-access errors, check Herdr's Files and Folders permissions in macOS System Settings.
 
-Herdr limits each external command to 30 seconds and 8 MiB of output. Discovery reports command-limit errors without presenting partial results.
+If Git succeeds but app opening fails, select **Open created worktree**. This retries opening without repeating Git creation.
 
-Git operations and app opening have separate outcomes. App opening must observe the correct checkout, a normal shell, and focus within ten seconds.
+The operation record lives in `<app-home>/data/worktree-launcher-operation.json`. After a reload, a complete checkout offers the same retry. An incomplete operation blocks new creation across machines.
 
-Existing matching spaces use live shell directories. A shell in a checkout subdirectory matches. A shell in a nested repository does not match.
-
-In the isolated development launcher, zsh loads your normal startup files, history, and cache. App/core storage and worktree destinations remain temporary.
-
-The launcher pins `HC_SOCKET` to the temporary core so restored shell configuration does not route `hc` to your live session.
-
-## Recovery
-
-If app opening fails after Git creation, select **Open created worktree**. This action never repeats Git creation.
-
-The mod saves its operation record in `<app-home>/data/worktree-launcher-operation.json` before Git creation.
-
-After a reload or window closure, the mod inspects this record and Git. A complete checkout offers the same open-only action.
-
-An incomplete operation blocks new creation. The mod preserves its checkout, branch, and operation record for manual inspection.
-
-The operation record includes its machine. Reopening selects that target before inspection or an open-only retry. One unresolved operation blocks new creation across machines. A disconnected machine never falls back to running locally.
+For an incomplete operation:
 
 1. Wait for the original Git operation to finish.
-2. On the reported machine, inspect the repository with `git worktree list --porcelain` and `git branch -vv`.
+2. On the reported machine, inspect the project with `git worktree list --porcelain` and `git branch -vv`.
 3. Repair any incomplete artifact manually.
-4. Move the operation record aside after you understand the outcome.
-5. Open the overlay again.
+4. Move the operation record aside only after you understand the Git outcome.
+5. Open the launcher again.
 
-The mod does not remove branches or worktrees. It does not claim that window closure rolls back Git.
+The launcher never removes branches or worktrees automatically. Closing the window does not roll back Git.
 
-## Project directory access on macOS
+## Remove
 
-`project_root` must be an absolute path. The shell expands `$HOME` in the install command; the mod does not expand `~` in JSON.
+Resolve pending operations first. Back up any legacy `mods/worktree-launcher/config.json`, then remove the installed mod directory and its shortcut.
 
-If a directory exists but Herdr cannot read it, check System Settings → Privacy & Security → Files and Folders. For projects in Documents, enable Documents Folder for Herdr, then select Refresh in the launcher.
-
-Local mod commands run in Herdr.app. Its folder permissions can differ from your terminal and Herdr Core. A successful installer access check or `hc exec` check does not prove that the desktop app can read the directory.
-
-`herdr-app check` checks initial native loading. It does not verify asynchronous discovery in the running desktop app or grant folder access.
-
-## Update and remove
-
-For an update, run `pnpm run install:mod --update`. The manual source-file copy also preserves your configuration.
-
-Root settings remain in `data/worktree-launcher-config.json` after removing the mod. Back up any legacy `mods/worktree-launcher/config.json` before deleting that folder.
-
-Then remove the installed `mods/worktree-launcher` directory and its optional keybinding. Preserve any recovery record until its operation is resolved.
-
-Removal does not remove Git worktrees, branches, app spaces, or unrelated app files.
+Settings under `data/`, Git worktrees, branches, and Herdr spaces remain.
