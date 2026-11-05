@@ -13,14 +13,17 @@ root=$1
 shift
 inside() { [[ "$1" == "$root" || "$1" == "\${root%/}/"* ]]; }
 ignored() {
-  local path=$1 p=\${1%/*} code
+  local path=$1 p=\${1%/*} code error
   [[ -n "$p" ]] || p=/
   while inside "$p"; do
     if [[ -e "$p/.git" || -L "$p/.git" ]]; then
-      git --no-optional-locks -C "$p" check-ignore --quiet -- "\${path:\${#p}+1}"
+      error=$(git --no-optional-locks -C "$p" check-ignore --quiet -- "\${path:\${#p}+1}" 2>&1)
       code=$?
-      if (( code > 1 )); then printf '%s\\n' 'Cannot inspect project ignore rules.' >&2; fi
-      return "$code"
+      if (( code < 2 )); then return "$code"; fi
+      if (( code != 128 )) || [[ "$error" != 'fatal: gitfile does not point to a valid repository:'* && "$error" != 'fatal: not a git repository:'* ]]; then
+        printf 'Cannot inspect project ignore rules at %s: %s\\n' "$p" "$error" >&2
+        return "$code"
+      fi
     fi
     [[ "$p" != "$root" && "$p" != / ]] || break
     p=\${p%/*}
@@ -145,8 +148,9 @@ export function createGit(runner, userHome, machine = null) {
       if (await occupied(`${p}/.git`)) {
         const r = await runner('git', ['--no-optional-locks', 'check-ignore', '--quiet', '--', path.slice(p.length + 1)], { cwd: p });
         if (r.code === 0) return true;
-        if (r.code !== 1) throw new Error('Cannot inspect project ignore rules.');
-        return false;
+        if (r.code === 1) return false;
+        const broken = r.code === 128 && /^fatal: (?:gitfile does not point to a valid repository:|not a git repository:)/.test(r.stderr ?? '');
+        if (!broken) throw new Error(`Cannot inspect project ignore rules at ${p}: ${(r.stderr || r.stdout || `git exited ${r.code}`).trim()}`);
       }
       if (p === root || p === '/') break;
     }

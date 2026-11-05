@@ -50,6 +50,28 @@ test('discovery distinguishes basenames, prunes build/ignored/bare/JJ and dedupl
   await mkdir(join(f.dir, 'empty')); assert.deepEqual(await f.api.discover({ project_root: join(f.dir, 'empty') }), []);
 });
 
+test('broken submodule gitfiles do not prevent finding healthy repositories on either machine', async t => {
+  const f = await fixture(t); const healthy = await f.repo('healthy');
+  const nested = await f.repo('archived/broken-parent/valid');
+  const broken = join(f.root, 'archived/broken-parent');
+  await mkdir(join(broken, 'lib/child'), { recursive: true });
+  await writeFile(join(broken, '.git'), 'gitdir: ../../missing-metadata\n');
+  await writeFile(join(broken, 'lib/child/.git'), 'gitdir: ../../missing-child-metadata\n');
+  for (const machine of [null, 'devbox']) {
+    const api = createGit(runner, f.home, machine);
+    const projects = await api.discover({ project_root: f.root });
+    assert.deepEqual(projects.map(project => project.path).sort(), [healthy, nested].sort());
+  }
+});
+
+test('ignore-rule errors other than invalid repository metadata still stop discovery with details', async t => {
+  const f = await fixture(t); const outer = await f.repo('outer'); await f.repo('outer/child');
+  const api = createGit((command, args, options) => command === 'git' && args.includes('check-ignore') && options.cwd === outer
+    ? Promise.resolve({ code: 128, stdout: '', stderr: 'fatal: could not read configuration: Permission denied' })
+    : runner(command, args, options), f.home);
+  await assert.rejects(api.discover({ project_root: f.root }), /Cannot inspect project ignore rules at .*Permission denied/);
+});
+
 test('remote discovery batches metadata without changing discovery rules or literal paths', async t => {
   const f = await fixture(t); const p = await f.repo("one ; 'literal'/app");
   await f.repo('two/app'); await f.repo('node_modules/hidden');
