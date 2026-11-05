@@ -18,11 +18,10 @@ const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
 function keyboardView(phase = 'editing') {
   globalThis.launcherClosedOverlays = [];
-  const actions = new Map(), bindings = [], contexts = [];
+  const handlers = new Map(), bindings = [];
   globalThis.launcherElement = () => {
     const element = new Proxy({}, { get: (_target, key) => (...args) => {
-      if (key === 'on_action') actions.set(args[0], args[1]);
-      if (key === 'key_context') contexts.push(args[0]);
+      if (key === 'on_key_down' || key === 'on_key_up') handlers.set(key, args[0]);
       return element;
     } });
     return element;
@@ -30,14 +29,12 @@ function keyboardView(phase = 'editing') {
   const view = new Launcher(); view.task = () => {};
   const cx = { focus_handle: () => ({}), bind_keys: rows => bindings.push(...rows), stop_propagation() {}, notify() {} };
   view.init({}, cx); view.model.phase = phase; view.render();
-  const binding = bindings.find(row => row.keystroke === 'escape');
-  assert(binding, 'Escape needs a native key binding, not just raw key handlers');
-  assert(contexts.includes(binding.context), 'The binding must be scoped to the launcher');
-  assert(actions.has(binding.action), 'The native Escape action must have a handler');
-  return { view, pressEscape: () => actions.get(binding.action)({ action: binding.action }, cx) };
+  assert(!bindings.some(row => row.keystroke === 'escape'), 'Do not override native Escape routing');
+  assert(handlers.has('on_key_down')); assert(handlers.has('on_key_up'));
+  return { view, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
 }
 
-test('the registered native Escape action closes the launcher without a raw key event', () => {
+test('Escape release closes the launcher without installing a competing native binding', () => {
   for (const field of ['machine', 'root', 'project', 'ref', 'name', null]) {
     const { view, pressEscape } = keyboardView();
     view.activeInput = field; view.openField = field;
@@ -47,7 +44,7 @@ test('the registered native Escape action closes the launcher without a raw key 
   }
 });
 
-test('the native Escape action preserves active saves and worktree operations', () => {
+test('Escape release preserves active saves and worktree operations', () => {
   for (const phase of ['configuring', 'creating', 'opening', 'saving-root']) {
     const { view, pressEscape } = keyboardView(phase === 'saving-root' ? 'loading' : phase);
     view.savingRoot = phase === 'saving-root';
