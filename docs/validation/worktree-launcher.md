@@ -205,3 +205,15 @@ The installer follows the installed Herdr app guide's copy, merge, and check ste
 All 40 tests passed under Node 24.22.1. Five installer tests cover standalone copying, key merging and backup, configuration preservation, explicit updates, invalid roots, shortcut conflicts, malformed keys, skipped shortcuts, failed native checks, default/custom app homes, and symlink refusal.
 
 First installation and update also passed using the real Herdr app 0.1.13 checker with core 0.1.18 installed. This smoke test used a temporary home, app home, core session, socket, project directory, and XDG paths under `/private/tmp/hwi-xNGnva`. It did not open a window, create spaces, restart a core, or alter the live installation.
+
+## Desktop access and selectable diagnostics — 2026-11-05
+
+The installed configuration contained a valid absolute project root. Terminal and core probes could read it, while a temporary diagnostic mod in the running desktop app observed a failed read-access check and `find` returning “Operation not permitted”. The probe mod was removed after collecting its results. This confirms an app-context access failure rather than a malformed configuration path.
+
+The installed Herdr source runs local mod `exec()` calls as app subprocesses. They do not share the core's folder access context. The live core reported 0.1.17 while the installed binary reported 0.1.18, and the app showed a pending update. Whether an app restart resolves the access denial remains a separate live check; this source change does not grant macOS permissions.
+
+The error now includes the failing root and macOS folder-permission guidance. Its regression test failed against the original generic error and passed after the change. All 41 tests passed.
+
+Errors, destination paths, checkout explanations, and recovery instructions now use selectable native TextView components. Plain text is HTML-escaped before rendering. The native module check passed, and an isolated screenshot verified literal angle brackets and ampersands in an error path. Drag selection and clipboard interaction remain unverified: native accessibility inspection timed out.
+
+The isolated test app and core were stopped. No live core was stopped or restarted. The normal installed project-root configuration was rechecked and remained unchanged.

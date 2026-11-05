@@ -42,7 +42,8 @@ export function createGit(runner, userHome) {
   async function rootOf(config) {
     const root = config?.project_root;
     if (!clean(root) || !root.startsWith('/')) throw new Error('Configure project_root as one absolute, readable directory in config.json.');
-    if (!(await test('-d', root)) || !(await test('-r', root)) || !(await test('-x', root))) throw new Error('Configured project_root is unavailable or unreadable.');
+    if (!(await test('-d', root))) throw new Error(`Configured project_root is unavailable or is not a directory: ${root}`);
+    if (!(await test('-r', root)) || !(await test('-x', root))) throw new Error(`Herdr cannot read project_root: ${root}. Check its permissions. For Documents, enable Documents Folder for Herdr in System Settings → Privacy & Security → Files and Folders, then Refresh.`);
     return real(root);
   }
   async function ignored(path, root) {

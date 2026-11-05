@@ -1,8 +1,13 @@
 import { View, div } from 'gpui-kit';
-import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar } from 'gpui-base';
+import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar, TextView } from 'gpui-base';
 import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, run, theme, props, closeOverlay } from 'herdr';
 import { createGit } from './git.js';
 import { WorktreeModel, openCheckout } from './model.js';
+
+function selectableText(id, text) {
+  const escaped = text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]).replaceAll('\n', '<br>');
+  return TextView.html(id, escaped).selectable(true).scrollable(false);
+}
 
 export default class WorktreeLauncher extends View {
   init(_props, cx) {
@@ -198,13 +203,13 @@ export default class WorktreeLauncher extends View {
       .child(h_flex().gap(8).children(['new', 'existing'].map((action, i) => button(action, action === 'new' ? 'New branch' : 'Existing branch', (_e, cx) => { if (m.setAction(action)) this.inputs.name.set_value(''); this.openField = null; if (m.project) this.inputs.ref.focus(); cx.notify(); }, !m.editable, m.action === action, i + 1))))
       .child(label(m.action === 'new' ? 'Base branch' : 'Branch'))
       .child(picker('ref'))
-      .when(m.action === 'existing' && Boolean(m.ref?.reason), el => el.child(div().text_size(11).text_color(t.blocked).child(m.ref.reason)))
+      .when(m.action === 'existing' && Boolean(m.ref?.reason), el => el.child(selectableText('checkout-reason', m.ref.reason).text_size(11).text_color(t.blocked)))
       .when(m.action === 'new', el => el.child(label('New branch name')).child(input('name')))
       .child(div().flex_1())
       .child(label('Destination'))
-      .child(div().text_size(11).child(m.path || 'Select a project and branch to preview the destination.'))
-      .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().text_color(t.blocked).child(m.error)))
-      .when(m.phase === 'partial', el => el.child(div().text_size(11).text_color(t.muted).child('Creation is blocked until this operation is inspected. See recovery instructions in the README.')))
+      .child(selectableText('destination', m.path || 'Select a project and branch to preview the destination.').text_size(11).text_color(t.foreground))
+      .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().child(selectableText('operation-error', m.error).text_color(t.blocked))))
+      .when(m.phase === 'partial', el => el.child(selectableText('recovery-instructions', 'Creation is blocked until this operation is inspected. See recovery instructions in the README.').text_size(11).text_color(t.muted)))
       .child(h_flex().gap(8).justify_end()
         .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 6))
         .when(m.phase === 'recover', el => el.child(button('open-created', 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))

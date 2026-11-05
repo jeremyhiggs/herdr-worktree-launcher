@@ -60,6 +60,18 @@ test('refs keep identities, availability reasons and both remotes; bases include
   assert(refs.some(x => x.ref === 'refs/heads/main'));
 });
 
+test('an app-context read denial names the project root and explains the macOS folder permission', async t => {
+  const f = await fixture(t);
+  const denied = createGit((command, args, options) => command === '/bin/test' && args[0] === '-r' && args[1] === f.root
+    ? Promise.resolve({ code: 1, stdout: '', stderr: '' }) : runner(command, args, options), f.home);
+  await assert.rejects(denied.discover({ project_root: f.root }), error => {
+    assert(error.message.includes(f.root));
+    assert.match(error.message, /Herdr/);
+    assert.match(error.message, /Files and Folders/);
+    return true;
+  });
+});
+
 for (const [action, ref, name, expected, upstream] of [
   ['existing', 'refs/heads/free', '', 'free', 'origin/free'],
   ['existing', 'refs/remotes/upstream/feature/a', '', 'feature/a', 'upstream/feature/a'],

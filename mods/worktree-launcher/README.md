@@ -102,6 +102,8 @@ The new-name field stays disabled until you select a base. Each choice list open
 
 The launcher uses Herdr's theme colors for light and dark themes. It follows system appearance when Herdr follows it; an explicit appearance setting in Herdr takes precedence.
 
+Error messages, checkout explanations, and destination paths support text selection and copying. Buttons and choice rows retain their normal control behavior.
+
 The mod reuses a space for the primary checkout or creates it first. Herdr groups the new worktree space beneath this project space.
 
 The mod requests Herdr's normal default shell, with no custom terminal command.
@@ -153,6 +155,16 @@ An incomplete operation blocks new creation. The mod preserves its checkout, bra
 5. Open the overlay again.
 
 The mod does not remove branches or worktrees. It does not claim that window closure rolls back Git.
+
+## Project directory access on macOS
+
+`project_root` must be an absolute path. The shell expands `$HOME` in the install command; the mod does not expand `~` in JSON.
+
+If a directory exists but Herdr cannot read it, check System Settings → Privacy & Security → Files and Folders. For projects in Documents, enable Documents Folder for Herdr, then select Refresh in the launcher.
+
+Local mod commands run in Herdr.app. Its folder permissions can differ from your terminal and Herdr Core. A successful installer access check or `hc exec` check does not prove that the desktop app can read the directory.
+
+`herdr-app check` checks initial native loading. It does not verify asynchronous discovery in the running desktop app or grant folder access.
 
 ## Update and remove
 
