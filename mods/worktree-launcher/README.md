@@ -126,11 +126,11 @@ Refresh rereads the configuration and discovers projects again. Opening the over
 
 ## Destination and limits
 
-The destination is `~/.herdr/worktrees/<primary-repo-basename>/<branch-slug>` on the selected machine, using that machine's home directory.
+The destination is `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine, using that machine's home directory. The repository name comes from the configured `origin` URL, without its `.git` suffix. Without an origin, the primary checkout folder supplies the name. For example, a checkout at `OlympusDAO/coingecko-api/master` with a `coingecko-api.git` origin uses `worktrees/coingecko-api/<branch-slug>`.
 
 The slug replaces runs outside ASCII letters, digits, dot, underscore, and hyphen with a hyphen. It trims outer hyphens.
 
-Repositories with the same basename can collide. Different branch names can also produce the same slug. An occupied destination stops creation.
+Repositories with the same name can collide. Different branch names can also produce the same slug. An occupied destination stops creation. Existing worktrees stay at their current paths.
 
 The mod rejects symlinks in existing worktree-store ancestors. The home directory itself can resolve through a symlink.
 

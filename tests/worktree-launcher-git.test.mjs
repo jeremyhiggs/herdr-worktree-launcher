@@ -25,7 +25,7 @@ async function fixture(t) {
     git(p, 'branch', 'free'); git(p, 'commit', '--allow-empty', '-m', 'second');
     git(p, 'branch', 'base'); git(p, 'tag', 'free');
     for (const remote of ['origin', 'upstream']) {
-      const bare = join(dir, `${relative.replaceAll('/', '-')}-${remote}.git`);
+      const bare = join(dir, `${relative.replaceAll('/', '-')}-${remote}`, `${relative.split('/').at(-1)}.git`);
       git(dir, 'init', '--bare', bare); git(p, 'remote', 'add', remote, bare);
       git(p, 'push', remote, 'refs/heads/main', 'refs/heads/free'); git(p, 'update-ref', `refs/remotes/${remote}/feature/a`, remote === 'origin' ? first : git(p, 'rev-parse', 'HEAD'));
     }
@@ -63,6 +63,32 @@ test('directory browsing lists immediate folders and symlinks with literal names
   assert(result.entries.slice(1).every(row => row.path === join(f.root, row.label)));
   assert.equal((await f.api.directories(join(f.root, 'linked'))).path, join(f.root, 'one'));
   await assert.rejects(f.api.directories(join(f.root, 'missing')), /project_root/);
+});
+
+test('branch-named primary checkouts use the origin repository name for destinations', async t => {
+  const f = await fixture(t); const p = await f.repo('OlympusDAO/coingecko-api/master');
+  git(p, 'branch', '-m', 'master');
+  git(p, 'remote', 'set-url', 'origin', 'git@code.example.invalid:OlympusDAO/coingecko-api.git');
+  const project = await f.project(p);
+  assert.equal(project.basename, 'coingecko-api');
+  const request = await f.api.prepare({ project, action: 'new', ref: 'refs/heads/master', name: 'test' });
+  assert.equal(request.path, join(f.home, '.herdr/worktrees/coingecko-api/test'));
+  assert.equal((await f.api.create(request)).kind, 'created');
+  assert.equal(git(request.path, 'symbolic-ref', 'HEAD'), 'refs/heads/test');
+  git(p, 'checkout', 'base');
+  assert.equal((await f.project(p)).basename, 'coingecko-api');
+  git(p, 'remote', 'set-url', 'origin', 'git@code.example.invalid:OlympusDAO/renamed.git');
+  await assert.rejects(f.api.prepare({ project, action: 'new', ref: 'refs/heads/base', name: 'stale-name' }), /identity changed/);
+});
+
+test('repository names support origin URL forms and fall back to the checkout folder without origin', async t => {
+  const f = await fixture(t); const p = await f.repo('checkout-folder');
+  for (const url of ['https://code.example.invalid/team/repository.git', 'ssh://git@code.example.invalid/team/repository.git/', 'git@code.example.invalid:repository.git', '/srv/git/repository.git', 'https://code.example.invalid/team/repository.git?transport=fixture']) {
+    git(p, 'remote', 'set-url', 'origin', url);
+    assert.equal((await f.project(p)).basename, 'repository');
+  }
+  git(p, 'remote', 'remove', 'origin');
+  assert.equal((await f.project(p)).basename, 'checkout-folder');
 });
 
 test('refs keep identities, availability reasons and both remotes; bases include checked out branches', async t => {

@@ -51,7 +51,15 @@ export function createGit(runner, userHome, machine = null) {
     const { top, id } = await identity(path);
     const primary = (await worktrees(top))[0];
     if (!primary?.worktree || primary.bare) throw new Error('No primary checkout.');
-    return { top, id, path: await real(primary.worktree) };
+    const primaryPath = await real(primary.worktree);
+    let name = basename(primaryPath);
+    try {
+      const origin = (await git(primaryPath, ['config', '--get', 'remote.origin.url'])).trim();
+      const url = (/^[a-z][a-z0-9+.-]*:\/\//i.test(origin) ? origin.split(/[?#]/, 1)[0] : origin).replace(/\/+$/, '');
+      name = (url.includes('/') ? basename(url) : url.slice(url.lastIndexOf(':') + 1)).replace(/\.git$/, '');
+      if (!clean(name) || ['.', '..'].includes(name)) throw new Error('Origin has no safe repository name.');
+    } catch (error) { if (error.code !== 1) throw error; }
+    return { top, id, path: primaryPath, basename: name };
   }
   async function rootOf(config) {
     const root = config?.project_root;
@@ -98,7 +106,7 @@ export function createGit(runner, userHome, machine = null) {
       if (repo.path === root || !inside(repo.path, root)) continue;
       const label = repo.path.slice(root.length + (root === '/' ? 0 : 1));
       if (label.split('/').some(p => pruned.includes(p)) || await ignored(repo.path, root)) continue;
-      projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: basename(repo.path) });
+      projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: repo.basename });
     }
     return [...projects.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
@@ -107,7 +115,7 @@ export function createGit(runner, userHome, machine = null) {
     if ((project.machine ?? null) !== machine) throw new Error('Project belongs to another machine; select it again.');
     const root = await rootOf({ project_root: project.root });
     const current = await projectIdentity(project.path);
-    if (root !== project.root || current.path !== project.path || current.top !== project.path || current.id !== project.id || !inside(current.path, root) || current.path === root || basename(current.path) !== project.basename) throw new Error('Project identity changed; Refresh and select it again.');
+    if (root !== project.root || current.path !== project.path || current.top !== project.path || current.id !== project.id || !inside(current.path, root) || current.path === root || current.basename !== project.basename) throw new Error('Project identity changed; Refresh and select it again.');
     if (current.path.slice(root.length + 1).split('/').some(p => pruned.includes(p)) || await ignored(current.path, root)) throw new Error('Project is now excluded; Refresh.');
     return current;
   }
