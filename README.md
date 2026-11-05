@@ -4,6 +4,7 @@ A native Herdr overlay for local and connected Linux/macOS machines, with two Gi
 
 - Create a worktree on an existing local or fetched remote branch.
 - Create a new branch from an explicitly selected local or remote base.
+- Open the worktree in a shell or an installed Claude Code, Pi, OpenCode, or Codex session.
 
 The mod uses Herdr app/core, Git, and standard macOS utilities. It needs no Node process or other mod at runtime.
 

@@ -7,8 +7,8 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 // Load the real view methods without a native window; controls below record focus.
 const modules = {
   'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
-  'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({on(){},set_value(){},value(){return \"\"},focus(){}})};',
-  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>[],panes=null,machines=null,pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
+  'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
+  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>[],panes=null,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
   resolve(specifier, context, next) { return Object.hasOwn(modules, specifier) ? { url: `native:${specifier}`, shortCircuit: true } : next(specifier, context); },
@@ -31,7 +31,7 @@ function keyboardView(phase = 'editing') {
   view.init({}, cx); view.model.phase = phase; view.render();
   assert(!bindings.some(row => row.keystroke === 'escape'), 'Do not override native Escape routing');
   assert(handlers.has('on_key_down')); assert(handlers.has('on_key_up'));
-  return { view, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
+  return { view, cx, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
 }
 
 test('Escape release closes the launcher without installing a competing native binding', () => {
@@ -54,14 +54,52 @@ test('Escape release preserves active saves and worktree operations', () => {
   }
 });
 
+test('Enter from a completed branch name or the form invokes Create only while enabled', async () => {
+  const { view, cx } = keyboardView();
+  let creates = 0;
+  view.model.project = {}; view.model.ref = {}; view.model.name = 'feature';
+  view.model.submit = async () => { creates++; };
+  view.task = (_cx, work) => work();
+  view.openField = null;
+  view.inputs.name.handlers.submit({ secondary: false }, cx);
+  assert.equal(creates, 1);
+  view.activeInput = null;
+  view.key({ key: 'enter' }, cx);
+  assert.equal(creates, 2);
+  view.model.name = '';
+  view.inputs.name.handlers.submit({ secondary: false }, cx);
+  view.key({ key: 'enter' }, cx);
+  assert.equal(creates, 2);
+  view.model.name = 'feature'; view.model.phase = 'creating';
+  view.inputs.name.handlers.submit({ secondary: false }, cx);
+  assert.equal(creates, 2);
+});
+
+test('Enter selects an open picker choice and root Enter still saves configuration', () => {
+  const { view, cx } = keyboardView();
+  view.model.project = {}; view.model.ref = {}; view.model.name = 'feature';
+  let creates = 0, choices = 0, saves = 0;
+  view.model.submit = async () => { creates++; }; view.task = (_cx, work) => work();
+  view.rows = () => [{ key: 'codex', label: 'Codex' }]; view.choose = () => { choices++; };
+  view.saveRoot = () => { saves++; };
+  view.openField = 'launch'; view.index = 0;
+  view.inputs.launch.handlers.submit({ secondary: false }, cx);
+  assert.equal(choices, 1); assert.equal(creates, 0);
+  view.openField = null;
+  view.inputs.root.handlers.submit({ secondary: false }, cx);
+  assert.equal(saves, 1); assert.equal(creates, 0);
+  view.inputs.name.handlers.submit({ secondary: true }, cx);
+  assert.equal(creates, 1);
+});
+
 function browseView(git) {
   const view = new Launcher(), pending = [];
-  view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true };
+  view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true, launch: { key: 'shell', label: 'Shell' } };
   view.syncedMachine = 'devbox'; view.syncedRoot = '/saved';
   view.rootRevision = 0; view.rootDraft = false;
   view.filters = {}; view.directoryGeneration = 0;
   view.scroll = { scroll_to_item() {} };
-  view.inputs = Object.fromEntries(['root', 'project', 'machine'].map(field => [field, {
+  view.inputs = Object.fromEntries(['root', 'project', 'machine', 'launch'].map(field => [field, {
     text: field === 'root' ? '/saved' : '', value() { return this.text; }, set_value(value) { this.text = value; }, focus() {},
   }]));
   view.task = (_cx, work) => { pending.push(work()); };
@@ -193,7 +231,7 @@ test('a slow machine selection cannot steal focus after the user switches machin
   });
   const view = new Launcher(), focus = [], pending = [];
   view.model = model; view.filters = { machine: '', project: '', ref: '' };
-  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
+  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
   view.task = (_cx, work) => { pending.push(work()); };
   view.choose({ id: 'slow', name: 'slow', label: 'slow' }, {}, 'machine');
   await new Promise(resolve => setImmediate(resolve));
@@ -216,7 +254,7 @@ test('late branch choices cannot steal focus from a same-path project on another
   await model.refresh();
   const view = new Launcher(), focus = [], pending = [];
   view.model = model; view.filters = { machine: '', project: '', ref: '' };
-  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
+  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
   view.buttons = { new: { focus() { focus.push('new'); } } };
   view.task = (_cx, work) => { pending.push(work()); };
   view.choose(project('slow'), {}, 'project');

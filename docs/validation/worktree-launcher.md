@@ -1,5 +1,13 @@
 # Worktree Launcher validation
 
+## Enter and launch selection — 2026-11-05
+
+The ready form now creates on Enter, including native submission from the completed branch-name input. Open dropdowns keep Enter for choosing a row; Project root keeps Enter for saving its configuration. No additional native key bindings were installed.
+
+Open with defaults to Shell and offers installed Claude Code, Pi, OpenCode, and Codex programs from Herdr's per-machine detection. Configured argv is passed intact. Agent checks overlap project discovery and cannot replace a newer machine's choices. Shell remains available if detection fails.
+
+Model tests cover shell/agent opening on local and remote machines, adding an agent tab to an existing worktree space, reusing a matching agent on retry, and persisting the choice in recovery. The native loading check passed. Physical keyboard interaction and actual agent startup were not exercised by these automated tests.
+
 ## Local discovery performance — 2026-11-05
 
 The local root returned identical records for 265 projects with the original JavaScript scan and the existing batched scanner. The Node runner measured 11.59 seconds with 5,271 app-level command calls before batching, and 7.55 seconds with 5 calls after batching. These are single-run scanner timings; they do not include the native app's per-call scheduling overhead.

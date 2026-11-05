@@ -21,6 +21,69 @@ function setup(overrides = {}) {
 }
 async function fill(model) { await model.refresh(); await model.selectProject(a); model.setName('feature'); model.selectRef(ref); }
 
+test('launch choices include Shell and only supported agents installed on the selected machine', async () => {
+  const seen = [];
+  const f = setup({ listAgents: async machine => {
+    seen.push(machine);
+    return [
+      { key: 'pi', name: 'Pi', installed: machine === 'devbox', run: ['pi'] },
+      { key: 'codex', name: 'Codex', installed: machine === null, run: ['custom-codex', '--fixture'] },
+      { key: 'unrelated', name: 'Unrelated', installed: true, run: ['unrelated'] },
+    ];
+  }, connect: async machine => ({ ...setup().git, machine }) });
+  await f.model.refresh();
+  assert.deepEqual(f.model.launches.map(item => item.key), ['shell', 'codex']);
+  assert.equal(f.model.launch.key, 'shell');
+  f.model.selectLaunch(f.model.launches[1]);
+  assert.deepEqual(f.model.launch.argv, ['custom-codex', '--fixture']);
+  await f.model.selectMachine('devbox');
+  assert.deepEqual(f.model.launches.map(item => item.key), ['shell', 'pi']);
+  assert.equal(f.model.launch.key, 'shell');
+  assert.deepEqual(seen, [null, 'devbox']);
+});
+
+test('the selected agent is recorded before creation and preserved for open-only retry', async () => {
+  const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['custom-codex'] }] });
+  await fill(f.model); f.model.selectLaunch(f.model.launches.find(item => item.key === 'codex'));
+  let opened;
+  await f.model.submit(async request => { opened = request; throw new Error('opening failed'); });
+  assert.equal(f.saved.launch.key, 'codex'); assert.deepEqual(f.saved.launch.argv, ['custom-codex']);
+  assert.equal(opened.launch.key, 'codex'); assert.equal(f.model.phase, 'recover');
+  await f.model.openCreated(async request => { assert.equal(request.launch.key, 'codex'); });
+  assert.equal(f.model.phase, 'complete'); assert.equal(f.mutations, 1);
+});
+
+test('recovery can switch to Shell and records that choice before opening without another Git mutation', async () => {
+  const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['codex'] }] });
+  await fill(f.model); f.model.selectLaunch(f.model.launches[1]);
+  await f.model.submit(async () => { throw new Error('opening failed'); });
+  f.model.selectLaunch(f.model.launches[0]);
+  await f.model.openCreated(async request => {
+    assert.equal(request.launch.key, 'shell'); assert.equal(f.saved.launch.key, 'shell');
+  });
+  assert.equal(f.mutations, 1); assert.equal(f.model.phase, 'complete');
+});
+
+test('agent detection runs alongside project discovery and a failed check leaves Shell available', async () => {
+  const agents = deferred(); let discovered = false;
+  const f = setup({ listAgents: () => agents.promise, git: { discover: async () => { discovered = true; return [a]; } } });
+  const refresh = f.model.refresh(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(discovered, true); agents.resolve([]); await refresh;
+  assert.deepEqual(f.model.launches.map(item => item.key), ['shell']);
+  f.model.listAgents = async () => { throw new Error('availability failed'); };
+  await f.model.refresh();
+  assert.equal(f.model.phase, 'editing'); assert.deepEqual(f.model.launches.map(item => item.key), ['shell']);
+});
+
+test('late agent detection cannot install choices from a previously selected machine', async () => {
+  const late = deferred();
+  const f = setup({ listAgents: machine => machine === null ? late.promise : Promise.resolve([{ key: 'pi', name: 'Pi', installed: true, run: ['pi'] }]), connect: async machine => ({ ...setup().git, machine }) });
+  const first = f.model.refresh(); await new Promise(resolve => setImmediate(resolve));
+  await f.model.selectMachine('devbox');
+  late.resolve([{ key: 'codex', name: 'Codex', installed: true, run: ['codex'] }]); await first;
+  assert.equal(f.model.machine, 'devbox'); assert.deepEqual(f.model.launches.map(item => item.key), ['shell', 'pi']);
+});
+
 test('late choices and closed overlays cannot replace current form; selections reset', async () => {
   const late = deferred(); const f = setup({ git: { choices: p => p === a ? late.promise : Promise.resolve([ref]) } });
   await f.model.refresh(); const first = f.model.selectProject(a); await f.model.selectProject(b);
@@ -124,6 +187,48 @@ test('opening creates and observes the project space before the worktree space',
   });
   assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/project', machine: '' }], ['space.new', { folder: '/worktree', machine: '' }]]);
   assert.equal(state.panes.find(p => p.focused).cwd, '/worktree');
+});
+
+test('selected agents launch in the worktree on the correct machine and reuse their existing pane on retry', async () => {
+  for (const machine of [null, 'devbox']) for (const existing of [false, true]) {
+    const prefix = machine ? 'devbox/' : '';
+    const state = { spaces: [], panes: [] }, calls = [];
+    function addPane(space, folder, program) {
+      const tab = `${prefix}tab-${state.panes.length}`, pane = `${prefix}pane-${state.panes.length}`;
+      space.tabs.push({ id: tab });
+      state.panes.push({ pane, tab, cwd: folder, terminal: pane, program, focused: false });
+    }
+    const primary = { id: `${prefix}primary`, machine, folder: '/project', tabs: [] };
+    state.spaces.push(primary); addPane(primary, '/project', { shell: true });
+    if (existing) {
+      const worktree = { id: `${prefix}worktree`, machine, folder: '/worktree', tabs: [] };
+      state.spaces.push(worktree); addPane(worktree, '/worktree', { shell: true });
+    }
+    let time = 0;
+    const request = { machine, path: '/worktree', project: { id: 'A', path: '/project' }, launch: { key: 'codex', label: 'Codex', argv: ['custom-codex', '--config', 'value with spaces'] } };
+    const app = { snapshot: () => state, now: () => time, pause: async () => { time += 250; }, timeout: noTimeout,
+      run: (command, args) => {
+        calls.push([command, args]);
+        if (command === 'space.new') {
+          const space = { id: `${prefix}worktree`, machine: args.machine || null, folder: args.folder, tabs: [] };
+          state.spaces.push(space); addPane(space, args.folder, { key: 'codex', agent: true });
+        }
+        if (command === 'tab.new') addPane(state.spaces.find(space => space.id === args.space), args.folder, { key: 'codex', agent: true });
+        if (command === 'space.select') state.spaces.forEach(space => { space.active = space.id === args.id; });
+        if (command === 'pane.focus') state.panes.forEach(pane => { pane.focused = pane.pane === args.pane; });
+      },
+    };
+    const git = { machine, identity: async path => ({ id: 'A', top: path }) };
+    await openCheckout(request, git, app);
+    const launches = calls.filter(([command]) => ['space.new', 'tab.new'].includes(command));
+    assert.equal(launches.length, 1); assert.equal(launches[0][0], existing ? 'tab.new' : 'space.new');
+    assert.deepEqual(launches[0][1].argv, request.launch.argv); assert.equal(launches[0][1].folder, '/worktree');
+    if (existing) assert.equal(launches[0][1].space, `${prefix}worktree`);
+    else assert.equal(launches[0][1].machine, machine ?? '');
+    assert.equal(state.panes.find(pane => pane.focused).program.key, 'codex');
+    await openCheckout(request, git, app);
+    assert.equal(calls.filter(([command]) => ['space.new', 'tab.new'].includes(command)).length, 1);
+  }
 });
 
 test('an unobserved project space prevents opening an ungrouped worktree space', async () => {

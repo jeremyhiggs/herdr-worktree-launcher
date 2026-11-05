@@ -1,5 +1,16 @@
+const shellLaunch = { key: 'shell', label: 'Shell', argv: null };
+const agentKeys = ['claude', 'pi', 'opencode', 'codex'];
+function launchChoices(programs) {
+  return [shellLaunch, ...agentKeys.flatMap(key => {
+    const agent = programs.find(item => item.key === key && item.installed && Array.isArray(item.run) && item.run[0] && item.run.every(arg => typeof arg === 'string' && !arg.includes('\0')));
+    return agent ? [{ key, label: agent.name, argv: [...agent.run] }] : [];
+  })];
+}
+
 export async function openCheckout(request, git, app) {
   const machine = request.machine ?? null;
+  const launch = request.launch?.key && request.launch.key !== 'shell' ? request.launch : null;
+  const acceptsProgram = pane => launch ? pane.program?.key === launch.key : pane.program?.shell;
   if ((git.machine ?? null) !== machine) throw new Error('Checkout belongs to another machine.');
   const deadline = app.now() + 10000;
   let expired = false;
@@ -14,7 +25,7 @@ export async function openCheckout(request, git, app) {
     const target = await git.identity(request.path);
     check();
     if (target.id !== request.project.id) throw new Error('Created checkout identity changed; inspect Git.');
-    async function match(identity, shell) {
+    async function match(identity, selectedProgram) {
       const { spaces, panes } = app.snapshot();
       const local = spaces.filter(s => (s.machine ?? null) === machine);
       // Check the likely space first, then verify its live checkout like every other candidate.
@@ -22,7 +33,7 @@ export async function openCheckout(request, git, app) {
       for (const space of local) {
         const tabs = new Set(space.tabs.map(t => t.id));
         const candidates = panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd);
-        const locations = shell ? candidates.filter(p => p.program?.shell) : candidates.length ? candidates.slice(0, 1) : space.folder ? [{ cwd: space.folder }] : [];
+        const locations = selectedProgram ? candidates.filter(acceptsProgram) : candidates.length ? candidates.slice(0, 1) : space.folder ? [{ cwd: space.folder }] : [];
         for (const pane of locations) {
           check();
           let current;
@@ -33,13 +44,16 @@ export async function openCheckout(request, git, app) {
       }
       return null;
     }
-    async function ensure(identity, path, shell) {
-      let found = await match(identity, shell);
+    async function ensure(identity, path, selectedProgram) {
+      let found = await match(identity, selectedProgram);
       if (found) return found;
-      send('space.new', { folder: path, machine: machine ?? '' });
+      const existing = selectedProgram ? await match(identity, false) : null;
+      const program = selectedProgram && launch ? { argv: launch.argv } : {};
+      if (existing) send('tab.new', { space: existing.space.id, folder: path, ...program, ...(launch ? { name: launch.label } : {}) });
+      else send('space.new', { folder: path, machine: machine ?? '', ...program, ...(selectedProgram && launch ? { tab: launch.label } : {}) });
       while (app.now() < deadline) {
         check();
-        found = await match(identity, shell);
+        found = await match(identity, selectedProgram);
         if (found) return found;
         await app.pause();
       }
@@ -60,7 +74,7 @@ export async function openCheckout(request, git, app) {
           selected = pane.pane;
         }
         const current = app.snapshot();
-        if (current.spaces.some(s => s.id === space.id && s.active) && current.panes.some(p => p.pane === pane.pane && p.focused && p.cwd === pane.cwd && p.program?.shell)) return;
+        if (current.spaces.some(s => s.id === space.id && s.active) && current.panes.some(p => p.pane === pane.pane && p.focused && p.cwd === pane.cwd && acceptsProgram(p))) return;
       }
       await app.pause();
     }
@@ -71,8 +85,10 @@ export async function openCheckout(request, git, app) {
 }
 
 export class WorktreeModel {
-  constructor({ connect, config, saveRoot, journal, open, machine = null }) {
-    Object.assign(this, { connect, config, saveRoot, journal, open, machine });
+  constructor({ connect, config, saveRoot, journal, open, machine = null, listAgents = async () => [] }) {
+    Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents });
+    this.launches = [shellLaunch];
+    this.launch = shellLaunch;
     this.git = null;
     this.root = '';
     this.rootReady = false;
@@ -100,6 +116,7 @@ export class WorktreeModel {
   async refresh(changed = () => {}) {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
+    const previousLaunch = this.launch.key;
     this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.rootReady = false; this.phase = 'loading';
     changed();
     try {
@@ -110,21 +127,24 @@ export class WorktreeModel {
       if (this.closed || generation !== this.generation) return;
       this.root = config.project_root ?? '';
       changed();
+      const programsTask = this.listAgents(this.machine).catch(() => []);
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
+      const [contents, programs] = await Promise.all([pending ? git.inspect(pending) : this.root ? git.discover(config) : [], programsTask]);
+      if (this.closed || generation !== this.generation) return;
+      this.launches = launchChoices(programs);
+      this.launch = this.launches.find(item => item.key === (pending ? pending.launch?.key ?? 'shell' : previousLaunch)) ?? shellLaunch;
+      changed();
       if (pending) {
-        const result = await git.inspect(pending);
-        if (this.closed || generation !== this.generation) return;
+        const result = contents;
         this.result = result;
         this.rootReady = !!this.root;
         this.phase = result.kind === 'created' ? 'recover' : 'partial';
         this.error = result.error || (result.kind === 'created' ? 'A previous operation created this checkout. Open it without running creation again.' : 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.');
         return;
       }
-      const projects = this.root ? await git.discover(config) : [];
-      if (this.closed || generation !== this.generation) return;
-      this.projects = projects; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
+      this.projects = contents; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
     } catch (e) {
       if (this.closed || generation !== this.generation) return;
       this.error = e.message; this.phase = 'editing';
@@ -132,6 +152,7 @@ export class WorktreeModel {
   }
   async selectMachine(machine, changed) {
     if (!this.editable || this.machine === machine) return false;
+    this.launch = shellLaunch; this.launches = [shellLaunch];
     this.machine = machine; this.root = '';
     await this.refresh(changed);
     return true;
@@ -170,6 +191,11 @@ export class WorktreeModel {
   }
   setName(name) { if (this.editable) { this.name = name; this.error = ''; } }
   selectRef(ref) { if (this.editable && (this.action === 'new' || !ref.reason)) { this.ref = ref; this.error = ''; } }
+  selectLaunch(launch) {
+    if (this.closed || !['editing', 'recover'].includes(this.phase)) return;
+    const selected = this.launches.find(item => item.key === launch.key);
+    if (selected) this.launch = selected;
+  }
   close() {
     if (this.busy) { this.error = 'The operation is finishing. This window stays open until the outcome is known.'; return false; }
     this.closed = true; this.generation++; return true;
@@ -180,6 +206,7 @@ export class WorktreeModel {
     let saved = false;
     try {
       const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name });
+      request.launch = this.launch;
       await this.journal.save(request);
       saved = true;
       this.result = await this.git.create(request);
@@ -198,7 +225,11 @@ export class WorktreeModel {
     try {
       const result = await this.git.inspect(this.result.request);
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Created checkout changed. Inspect Git before opening.'; return; }
-      await open(result.request);
+      const request = { ...result.request, launch: this.launch };
+      if (JSON.stringify(result.request.launch ?? shellLaunch) !== JSON.stringify(this.launch)) {
+        await this.journal.save(request); this.result = { ...result, request };
+      }
+      await open(request);
       await this.journal.save(null);
       this.phase = 'complete';
     } catch (e) { this.error = e.message; this.phase = 'recover'; }

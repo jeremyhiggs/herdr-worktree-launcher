@@ -101,7 +101,8 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 5. Choose **New branch** or **Existing branch**.
 6. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
 7. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
-8. Read the destination and activate **Create** or press Cmd+Enter.
+8. Read the destination and choose **Open with**: Shell (the default), Claude Code, Pi, OpenCode, or Codex. Only agents installed on the selected machine appear.
+9. Activate **Create** or press Enter when the form is ready. Enter selects an open dropdown choice first. Cmd+Enter creates directly.
 
 The project-root field always remains visible. Changing machine clears the previous machine's path immediately and displays the selected machine's saved root before project discovery finishes. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
 
@@ -109,7 +110,9 @@ The UI mod is installed only in the local app. Remote discovery, validation, and
 
 Project discovery batches filesystem and Git metadata checks into one Bash scan on the selected machine. This avoids thousands of calls through the app for large local roots and avoids remote round trips. Refresh always scans again. Branch selection and creation still revalidate current repository state. A failed or truncated scan reports an error instead of showing a partial project list.
 
-Enter in a search field selects a choice. It does not submit the form. Tab and Shift+Tab move between controls.
+Enter in an open search dropdown selects a choice. Enter from the completed branch-name field or the ready form creates the worktree. Enter in Project root saves that configuration. Tab and Shift+Tab move between controls.
+
+Agent availability and launch commands come from Herdr's configured programs on the selected machine. Agent detection runs alongside discovery. The selected program opens in the new worktree; the primary project space keeps its existing terminals. An existing matching worktree space receives a new program tab when needed. An open-only retry reuses a matching running program instead of starting another one. The recovery screen allows changing **Open with** before retrying.
 
 The new-name field stays disabled until you select a base. Each choice list opens below its own search field.
 
@@ -119,7 +122,7 @@ Error messages, checkout explanations, and destination paths support text select
 
 The mod reuses a space for the primary checkout or creates it first. Herdr groups the new worktree space beneath this project space.
 
-The mod requests Herdr's normal default shell, with no custom terminal command.
+Shell uses Herdr's normal default shell. An agent uses its configured Herdr launch command.
 
 Checked-out local branches are disabled for Existing branch and show their checkout path. They remain available as bases for new branches. If you select one as a base and switch to Existing branch, Create stays disabled and the checkout path explains why.
 
