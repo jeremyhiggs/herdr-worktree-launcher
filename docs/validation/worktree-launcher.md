@@ -1,5 +1,11 @@
 # Worktree Launcher validation
 
+## Local discovery performance — 2026-11-05
+
+The local root returned identical records for 265 projects with the original JavaScript scan and the existing batched scanner. The Node runner measured 11.59 seconds with 5,271 app-level command calls before batching, and 7.55 seconds with 5 calls after batching. These are single-run scanner timings; they do not include the native app's per-call scheduling overhead.
+
+Local and remote discovery now use the same scanner. The separate JavaScript discovery path was removed. Tests assert the five-call bound and explicit project identities for both machines, including ignored and linked checkouts. Git and path validation before creation remains live.
+
 ## Remote discovery performance — 2026-11-05
 
 A scan of the connected devbox found the same 11 projects before and after batching. The original scan took 12.41 seconds and 411 remote commands; the batched scan took 0.90 seconds and 7 commands, including connection and root validation. These are observed single-run timings, not a latency guarantee. The project records matched exactly.

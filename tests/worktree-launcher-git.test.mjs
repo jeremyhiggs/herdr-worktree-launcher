@@ -66,27 +66,27 @@ test('broken submodule gitfiles do not prevent finding healthy repositories on e
 
 test('ignore-rule errors other than invalid repository metadata still stop discovery with details', async t => {
   const f = await fixture(t); const outer = await f.repo('outer'); await f.repo('outer/child');
-  const api = createGit((command, args, options) => command === 'git' && args.includes('check-ignore') && options.cwd === outer
-    ? Promise.resolve({ code: 128, stdout: '', stderr: 'fatal: could not read configuration: Permission denied' })
-    : runner(command, args, options), f.home);
-  await assert.rejects(api.discover({ project_root: f.root }), /Cannot inspect project ignore rules at .*Permission denied/);
+  const config = join(outer, '.git/config'); await chmod(config, 0);
+  try { await assert.rejects(f.api.discover({ project_root: f.root }), /Cannot inspect project ignore rules at .*Permission denied/); }
+  finally { await chmod(config, 0o600); }
 });
 
-test('remote discovery batches metadata without changing discovery rules or literal paths', async t => {
+test('local and remote discovery batch metadata without changing discovery rules or literal paths', async t => {
   const f = await fixture(t); const p = await f.repo("one ; 'literal'/app");
-  await f.repo('two/app'); await f.repo('node_modules/hidden');
+  const other = await f.repo('two/app'); await f.repo('node_modules/hidden');
   await f.repo("one ; 'literal'/app/ignored"); await writeFile(join(p, '.gitignore'), 'ignored/\n');
   git(p, 'worktree', 'add', join(f.root, 'linked'), 'free');
   await mkdir(join(f.root, 'native-jj/.jj'), { recursive: true }); git(f.root, 'init', '--bare', 'bare.git');
-  const local = await f.api.discover({ project_root: f.root });
-  const calls = [];
-  const remote = createGit((command, args, options) => { calls.push(command); return runner(command, args, options); }, f.home, 'devbox');
-  const projects = await remote.discover({ project_root: f.root });
-  assert.deepEqual(projects, local.map(project => ({ ...project, machine: 'devbox' })));
-  assert(calls.length <= 5, `Expected one scan plus root validation, got ${calls.length} calls`);
-  assert.equal(calls.filter(command => command === '/bin/bash').length, 1);
-  const nested = await remote.discover({ project_root: join(f.root, "one ; 'literal'") });
-  assert.equal(nested.length, 1); assert.equal(nested[0].path, p);
+  for (const machine of [null, 'devbox']) {
+    const calls = [];
+    const api = createGit((command, args, options) => { calls.push(command); return runner(command, args, options); }, f.home, machine);
+    const projects = await api.discover({ project_root: f.root });
+    assert.deepEqual(projects, [p, other].map(path => ({ id: join(path, '.git'), machine, path, root: f.root, label: path.slice(f.root.length + 1), basename: 'app' })));
+    assert(calls.length <= 5, `Expected one scan plus root validation, got ${calls.length} calls`);
+    assert.equal(calls.filter(command => command === '/bin/bash').length, 1);
+    const nested = await api.discover({ project_root: join(f.root, "one ; 'literal'") });
+    assert.equal(nested.length, 1); assert.equal(nested[0].path, p);
+  }
 });
 
 test('remote discovery rejects failed scans instead of exposing a partial project list', async t => {
@@ -278,14 +278,14 @@ test('canonical revalidation rejects a project replaced by an outside symlink an
   await assert.rejects(f.api.discover({ project_root: join(f.dir, 'unreadable') }), /unreadable/);
 });
 
-test('discovery reports find failures and Git timeouts rather than returning a partial list', async t => {
-  const f = await fixture(t); await f.repo('app');
-  for (const program of ['/usr/bin/find', 'git']) {
+test('discovery reports scan failures and live Git timeouts rather than returning a partial list', async t => {
+  const f = await fixture(t); const path = await f.repo('app'); const project = await f.project(path);
+  for (const program of ['/bin/bash', 'git']) {
     const api = createGit(async (command, args, options) => {
       if (command === program) throw new Error('injected output/time limit');
       return runner(command, args, options);
     }, f.home);
-    await assert.rejects(api.discover({ project_root: f.root }), /limit/);
+    await assert.rejects(program === 'git' ? api.choices(project) : api.discover({ project_root: f.root }), /limit/);
   }
 });
 

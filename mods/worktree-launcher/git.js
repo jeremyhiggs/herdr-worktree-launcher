@@ -4,9 +4,9 @@ const basename = path => path.slice(path.lastIndexOf('/') + 1);
 const inside = (path, root) => path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
 const pruned = ['node_modules', 'vendor', 'target', 'build', 'dist', '.next', 'coverage'];
 
-// Run metadata checks beside the remote filesystem instead of paying an RPC per check.
+// Run metadata checks beside the filesystem instead of crossing the app bridge per check.
 // Paths are positional arguments; NUL records preserve spaces and shell metacharacters.
-const remoteDiscovery = `
+const discoveryScript = `
 set -uo pipefail
 export LC_ALL=C
 root=$1
@@ -159,16 +159,14 @@ export function createGit(runner, userHome, machine = null) {
   async function discover(config) {
     const root = await rootOf(config);
     const expr = pruned.flatMap((name, i) => [...(i ? ['-o'] : []), '-name', name]);
-    let repositories = [];
-    if (machine) {
-      const fields = (await command('/bin/bash', ['-c', remoteDiscovery, 'worktree-launcher', root, ...expr])).split('\0');
-      if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-scan-complete' || fields.length % 6) throw new Error('Remote project scan returned incomplete metadata.');
-      for (let i = 0; i < fields.length; i += 6) {
-        const [candidate, top, id, path, origin, missing] = fields.slice(i, i + 6);
-        if (![candidate, top, id, path].every(clean) || !['0', '1'].includes(missing)) throw new Error('Remote project scan returned invalid metadata.');
-        repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim()) });
-      }
-    } else repositories = await localProjects(root, expr);
+    const fields = (await command('/bin/bash', ['-c', discoveryScript, 'worktree-launcher', root, ...expr])).split('\0');
+    if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-scan-complete' || fields.length % 6) throw new Error('Project scan returned incomplete metadata.');
+    const repositories = [];
+    for (let i = 0; i < fields.length; i += 6) {
+      const [candidate, top, id, path, origin, missing] = fields.slice(i, i + 6);
+      if (![candidate, top, id, path].every(clean) || !['0', '1'].includes(missing)) throw new Error('Project scan returned invalid metadata.');
+      repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim()) });
+    }
     const projects = new Map();
     for (const repo of repositories) {
       if (repo.path === root || !inside(repo.path, root)) continue;
@@ -177,22 +175,6 @@ export function createGit(runner, userHome, machine = null) {
       projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: repo.basename });
     }
     return [...projects.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }
-  async function localProjects(root, expr) {
-    const found = await command('/usr/bin/find', [root, '(', '-type', 'd', '(', ...expr, ')', '-prune', ')', '-o', '(', '-name', '.git', '-print0', '-prune', ')']);
-    const repositories = [];
-    for (const marker of found.split('\0').filter(Boolean)) {
-      const candidate = parent(marker);
-      if (!clean(candidate) || await ignored(candidate, root)) continue;
-      let repo;
-      try { repo = await projectIdentity(candidate); }
-      catch (e) {
-        if (e.code === 128 || e.message === 'Bare repositories are unavailable.') continue;
-        throw e;
-      }
-      if (!await ignored(repo.path, root)) repositories.push(repo);
-    }
-    return repositories;
   }
   async function validateProject(project) {
     if (!project || !clean(project.path) || !clean(project.root)) throw new Error('Select a project.');
