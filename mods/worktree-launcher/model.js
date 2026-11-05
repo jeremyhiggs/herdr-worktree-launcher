@@ -14,7 +14,7 @@ export async function openCheckout(request, git, app) {
   if ((git.machine ?? null) !== machine) throw new Error('Checkout belongs to another machine.');
   const deadline = app.now() + 10000;
   let expired = false;
-  const unconfirmed = () => new Error(`Opening unconfirmed after 10 seconds. Checkout preserved at ${request.path}. Retry Open created worktree.`);
+  const unconfirmed = () => new Error(`Opening unconfirmed after 10 seconds. Checkout preserved at ${request.path}. Retry ${request.reuse ? 'Open worktree' : 'Open created worktree'}.`);
   const check = () => { if (expired || app.now() >= deadline) throw unconfirmed(); };
   const send = (command, args) => { check(); app.run(command, args); };
   const timer = app.timeout(10000);
@@ -24,7 +24,7 @@ export async function openCheckout(request, git, app) {
     if (project.id !== request.project.id || project.top !== request.project.path) throw new Error('Project checkout identity changed; inspect Git.');
     const target = await git.identity(request.path);
     check();
-    if (target.id !== request.project.id) throw new Error('Created checkout identity changed; inspect Git.');
+    if (target.id !== request.project.id) throw new Error('Checkout identity changed; inspect Git.');
     async function match(identity, selectedProgram) {
       const { spaces, panes } = app.snapshot();
       const local = spaces.filter(s => (s.machine ?? null) === machine);
@@ -107,8 +107,10 @@ export class WorktreeModel {
   get busy() { return ['configuring', 'creating', 'opening'].includes(this.phase); }
   get editable() { return !this.closed && ['editing', 'loading'].includes(this.phase); }
   get canCreate() { return this.phase === 'editing' && !!this.project && !!this.ref && (this.action === 'existing' ? !this.ref.reason : !!this.name); }
+  get reusing() { return this.result ? !!this.result.request?.reuse : this.action === 'existing' && !!this.ref?.checkout; }
   get path() {
     if (this.result) return this.result.path;
+    if (this.reusing) return this.ref.checkout;
     try { return this.project ? this.git.destination(this.project, this.action === 'existing' ? this.ref?.name ?? '' : this.name) : ''; }
     catch { return ''; }
   }
@@ -141,7 +143,7 @@ export class WorktreeModel {
         this.result = result;
         this.rootReady = !!this.root;
         this.phase = result.kind === 'created' ? 'recover' : 'partial';
-        this.error = result.error || (result.kind === 'created' ? 'A previous operation created this checkout. Open it without running creation again.' : 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.');
+        this.error = result.error || (result.kind === 'created' ? pending.reuse ? 'A previous operation targeted this existing checkout. Open it without changing Git.' : 'A previous operation created this checkout. Open it without running creation again.' : 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.');
         return;
       }
       this.projects = contents; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
@@ -205,7 +207,7 @@ export class WorktreeModel {
     this.phase = 'creating'; this.error = '';
     let saved = false;
     try {
-      const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name });
+      const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name, checkout: this.action === 'existing' ? this.ref.checkout : null });
       request.launch = this.launch;
       await this.journal.save(request);
       saved = true;
@@ -224,7 +226,7 @@ export class WorktreeModel {
     this.phase = 'opening'; this.error = '';
     try {
       const result = await this.git.inspect(this.result.request);
-      if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Created checkout changed. Inspect Git before opening.'; return; }
+      if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
       const request = { ...result.request, launch: this.launch };
       if (JSON.stringify(result.request.launch ?? shellLaunch) !== JSON.stringify(this.launch)) {
         await this.journal.save(request); this.result = { ...result, request };

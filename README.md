@@ -51,9 +51,11 @@ You can also enter an absolute project-root path directly. The launcher saves a 
 
 Select **Existing branch**, then choose a local or fetched remote branch. The branch-name field disappears.
 
-Branches that already have a checkout appear disabled, with their checkout paths. You can still use these branches as bases for new branches.
+If the branch already has a checkout, its folder appears in the picker and preview. Select **Open worktree** to open a session in that folder.
 
-![Existing-branch picker showing an unavailable checked-out branch and its path](docs/screenshots/existing-branch.png)
+The launcher reuses the checkout without changing its files or branches. You can also use checked-out branches as bases for new branches.
+
+![Existing-branch picker showing an existing worktree folder and the Open worktree action](docs/screenshots/existing-branch.png)
 
 The launcher uses the refs already on your machine. To see newer remote branches, fetch them in your repository before opening the launcher.
 
@@ -91,9 +93,9 @@ Project discovery, Git commands, worktrees, and agents all use the selected mach
 | --- | --- |
 | ⌘⇧G | Open the launcher |
 | ↑ / ↓ | Move through an open choice list |
-| Enter | Select an open choice, or create when the form is ready |
+| Enter | Select an open choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
-| ⌘Enter | Create directly, or save when Project root has focus |
+| ⌘Enter | Create/open directly, or save when Project root has focus |
 | Tab / Shift+Tab | Move between controls |
 | Esc | Close the launcher when no operation is in progress |
 

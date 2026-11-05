@@ -48,7 +48,9 @@ Each target needs Git, `/bin/bash`, `find`, `realpath`, `test`, and `mkdir`. The
 
 The branch picker includes local and fetched remote branches. The launcher does not fetch automatically.
 
-Checked-out branches show their paths and are unavailable for **Existing branch**. They remain available as bases for **New branch**.
+Checked-out branches show their paths. Select one and use **Open worktree** to open a session in its existing folder. Its files, branch, and tracking settings stay intact.
+
+Checked-out branches also remain available as bases for **New branch**.
 
 An existing remote branch creates a local branch that tracks that remote. A new branch has no upstream.
 
@@ -61,9 +63,9 @@ The launcher creates or reuses the primary project space, then opens the worktre
 | Key | Action |
 | --- | --- |
 | ↑ / ↓ | Move through an open choice list |
-| Enter | Select a choice, or create when the form is ready |
+| Enter | Select a choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
-| ⌘Enter | Create directly, or save when Project root has focus |
+| ⌘Enter | Create/open directly, or save when Project root has focus |
 | Tab / Shift+Tab | Move between controls |
 | Esc | Close when no operation is in progress |
 

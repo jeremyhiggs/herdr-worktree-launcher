@@ -68,6 +68,8 @@ A sample-only driver selects fields in the real launcher. It captures the new-br
 
 The last scene creates a real sample branch and worktree through the launcher. Agent menus reflect detected programs. The script does not start an agent.
 
+An additional scene opens a pre-existing checkout in its custom folder and checks that Git's worktree list stays unchanged. Its screenshot remains in the sample directory.
+
 Images replace the files in `docs/screenshots/`. The script stops its app and core and prints the retained sample directory for inspection.
 
 The capture activates the sample window on your desktop. It dismisses first-run overlays in that sample window before capture.

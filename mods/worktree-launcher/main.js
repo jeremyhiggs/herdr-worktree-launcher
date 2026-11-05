@@ -275,7 +275,7 @@ export default class WorktreeLauncher extends View {
           .bg(range.start + offset === this.index ? t.selected : t.popover)
           .text_color(unavailable ? t.dim : t.foreground)
           .child(div().truncate().child(`${chosen ? '✓ ' : ''}${row.label}`))
-          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isLaunch ? row.key === 'shell' ? 'Default shell' : `Installed on ${m.machine ?? 'this computer'}` : isMachine ? row.reason : isProject || isDirectory ? row.path : unavailable ? row.reason : row.ref));
+          .child(div().truncate().text_size(10.5).text_color(t.muted).child(isLaunch ? row.key === 'shell' ? 'Default shell' : `Installed on ${m.machine ?? 'this computer'}` : isMachine ? row.reason : isProject || isDirectory ? row.path : row.reason || (row.checkout ? `${m.action === 'existing' ? 'Open existing worktree at' : 'Checked out at'} ${row.checkout}` : row.ref)));
       })).size_full().track_scroll(this.scroll).on_item_click((value, cx) => {
         if (this.openField === field) this.choose(this.rows(field).find(row => key(row) === value), cx, field);
       }))
@@ -331,7 +331,7 @@ export default class WorktreeLauncher extends View {
       .when(m.action === 'existing' && Boolean(m.ref?.reason), el => el.child(selectableText('checkout-reason', m.ref.reason).text_size(11).text_color(t.blocked)))
       .when(m.action === 'new', el => el.child(label('New branch name')).child(input('name')))
       .child(div().flex_1())
-      .child(label('Destination'))
+      .child(label(m.reusing ? 'Existing worktree' : 'Destination'))
       .child(selectableText('destination', m.path || 'Select a project and branch to preview the destination.').text_size(11).text_color(t.foreground))
       .child(label('Open with'))
       .child(picker('launch'))
@@ -339,8 +339,8 @@ export default class WorktreeLauncher extends View {
       .when(m.phase === 'partial', el => el.child(selectableText('recovery-instructions', 'Creation is blocked until this operation is inspected. See recovery instructions in the README.').text_size(11).text_color(t.muted)))
       .child(h_flex().gap(8).justify_end()
         .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 6))
-        .when(m.phase === 'recover', el => el.child(button('open-created', 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))
-        .when(m.phase !== 'recover', el => el.child(button('create', ['creating', 'opening'].includes(m.phase) ? 'Finishing…' : 'Create', (_e, cx) => this.task(cx, open => m.submit(open)), !m.canCreate, true, 7))))
-      .child(div().text_size(10.5).text_color(t.dim).child(this.activeInput === 'root' ? '↑↓ choose · Enter opens folder · Cmd+Enter saves root · Esc closes' : '↑↓ choose · Enter selects / creates · Tab changes field · Cmd+Enter creates · Esc closes'));
+        .when(m.phase === 'recover', el => el.child(button('open-created', m.reusing ? 'Open worktree' : 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))
+        .when(m.phase !== 'recover', el => el.child(button('create', ['creating', 'opening'].includes(m.phase) ? 'Finishing…' : m.reusing ? 'Open worktree' : 'Create', (_e, cx) => this.task(cx, open => m.submit(open)), !m.canCreate, true, 7))))
+      .child(div().text_size(10.5).text_color(t.dim).child(this.activeInput === 'root' ? '↑↓ choose · Enter opens folder · Cmd+Enter saves root · Esc closes' : m.reusing ? '↑↓ choose · Enter selects / opens · Tab changes field · Cmd+Enter opens · Esc closes' : '↑↓ choose · Enter selects / creates · Tab changes field · Cmd+Enter creates · Esc closes'));
   }
 }

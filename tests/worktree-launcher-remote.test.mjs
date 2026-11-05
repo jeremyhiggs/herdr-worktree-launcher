@@ -59,6 +59,9 @@ test('live remote discovery and all branch flows use only disposable repositorie
     assert.equal(await run('git', ['rev-parse', 'HEAD'], request.path), commit);
     assert.equal(await run('git', ['for-each-ref', '--format=%(upstream)', `refs/heads/${request.name}`], request.path), upstream);
     assert.equal((await api.inspect(request)).kind, 'created');
+    const reopen = await api.prepare({ project, action: 'existing', ref: `refs/heads/${request.name}`, checkout: request.path });
+    assert.equal(reopen.reuse, true); assert.equal(reopen.path, request.path);
+    assert.equal((await api.create(reopen)).kind, 'created');
   }
   assert.equal(await git('rev-parse', 'HEAD'), second);
   assert.equal(await git('status', '--porcelain'), '');

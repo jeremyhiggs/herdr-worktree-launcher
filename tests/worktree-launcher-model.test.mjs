@@ -97,19 +97,41 @@ test('late choices and closed overlays cannot replace current form; selections r
   assert.equal(f.model.refs.length, 0);
 });
 
-test('a checked-out base survives action changes but cannot create an existing-branch checkout', async () => {
+test('a checked-out branch previews its existing folder and remains selectable across action changes', async () => {
   const f = setup(); await fill(f.model);
-  const checkedOut = { ...ref, reason: 'Checked out at /projects/A' };
+  const checkedOut = { ...ref, checkout: '/projects/A' };
   f.model.selectRef(checkedOut);
   assert.equal(f.model.canCreate, true);
   f.model.setAction('existing');
-  assert.equal(f.model.ref, checkedOut); assert.equal(f.model.canCreate, false);
-  await f.model.submit(); assert.equal(f.mutations, 0);
+  assert.equal(f.model.ref, checkedOut); assert.equal(f.model.canCreate, true);
+  assert.equal(f.model.reusing, true); assert.equal(f.model.path, '/projects/A');
+  f.model.selectRef({ ...ref, reason: 'unavailable' }); assert.equal(f.model.ref, checkedOut);
   f.model.selectRef(ref); assert.equal(f.model.canCreate, true);
   f.model.setAction('new');
   assert.equal(f.model.ref, ref); assert.equal(f.model.canCreate, false);
   f.model.selectRef(checkedOut); f.model.setName('another-branch');
   assert.equal(f.model.canCreate, true);
+});
+
+test('an existing-checkout session preserves its folder and program through opening recovery', async () => {
+  const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['codex'] }] });
+  await fill(f.model); f.model.setAction('existing');
+  const checkout = '/custom/existing'; f.model.selectRef({ ...ref, checkout });
+  f.model.selectLaunch(f.model.launches[1]);
+  f.git.prepare = async options => {
+    assert.equal(options.checkout, checkout);
+    return { ...f.request, action: 'existing', name: 'main', path: checkout, reuse: true };
+  };
+  f.git.create = async request => ({ kind: 'created', path: request.path, request });
+  await f.model.submit(async request => {
+    assert.equal(request.path, checkout); assert.equal(request.launch.key, 'codex');
+    throw new Error('opening failed');
+  });
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.saved.reuse, true);
+  await f.model.refresh();
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.model.reusing, true); assert.equal(f.model.path, checkout);
+  await f.model.openCreated(async request => { assert.equal(request.path, checkout); });
+  assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
 });
 
 test('double submit admits one mutation; Escape keeps pending operation open', async () => {

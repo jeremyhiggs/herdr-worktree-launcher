@@ -21,8 +21,9 @@ export default class ScreenshotLauncher extends Launcher {
           if (!project) throw new Error('Sample project not discovered.');
           await m.selectProject(project);
           this.showChoice('project', project.label);
-          m.setAction(scene === 'existing' ? 'existing' : 'new');
-          const ref = m.refs.find(item => item.ref === (scene === 'existing' ? 'refs/heads/feature/pagination' : 'refs/heads/main'));
+          const existing = ['existing', 'reuse'].includes(scene);
+          m.setAction(existing ? 'existing' : 'new');
+          const ref = m.refs.find(item => item.ref === (existing ? 'refs/heads/feature/pagination' : 'refs/heads/main'));
           if (!ref) throw new Error('Sample branch not discovered.');
           m.selectRef(ref); this.showChoice('ref', ref.label);
           m.setName('feature/rate-limits'); this.showChoice('name', m.name);
@@ -30,7 +31,7 @@ export default class ScreenshotLauncher extends Launcher {
           if (scene === 'existing') { this.inputs.ref.focus(); this.field = 'ref'; this.openField = 'ref'; }
           else if (scene === 'agents') { this.inputs.launch.focus(); this.field = 'launch'; this.openField = 'launch'; }
           else this.inputs.name.focus();
-          if (scene === 'create') {
+          if (['create', 'reuse'].includes(scene)) {
             await m.submit(request => openCheckout(request, m.git, {
               snapshot: () => ({ spaces: spaces(), panes: panes() }), run, now: () => Date.now(), pause: () => pause(100),
               timeout: ms => {
@@ -44,7 +45,7 @@ export default class ScreenshotLauncher extends Launcher {
           window.activate_window(); cx.notify();
           const state = JSON.stringify({ scene, phase: m.phase, projects: m.projects.length, launchers: m.launches.map(item => item.label), result: m.result?.path ?? null });
           await writeTextFile(path, state, previous); previous = state;
-          if (scene === 'create') closeOverlay(props().overlay);
+          if (['create', 'reuse'].includes(scene)) closeOverlay(props().overlay);
         } catch (error) {
           const state = JSON.stringify({ scene, error: String(error) });
           await writeTextFile(path, state, previous); previous = state;

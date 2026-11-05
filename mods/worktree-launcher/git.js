@@ -201,8 +201,8 @@ export function createGit(runner, userHome, machine = null) {
     const locals = new Set(refs.filter(r => r.kind === 'local').map(r => r.name));
     return refs.map(r => {
       const checkout = checked.find(w => w.branch === r.ref);
-      const reason = r.kind === 'local' ? (checkout ? `Checked out at ${checkout.worktree}` : '') : !r.source ? 'Remote is no longer configured.' : locals.has(r.name) ? `A local branch named ${r.name} already exists.` : '';
-      return { ...r, reason };
+      const reason = r.kind === 'local' ? (checkout?.prunable ? `Worktree is unavailable at ${checkout.worktree}. Repair it in Git, then Refresh.` : '') : !r.source ? 'Remote is no longer configured.' : locals.has(r.name) ? `A local branch named ${r.name} already exists.` : '';
+      return { ...r, checkout: checkout?.worktree ?? null, reason };
     });
   }
   function destination(project, name) {
@@ -221,39 +221,49 @@ export function createGit(runner, userHome, machine = null) {
       }
     }
   }
-  async function prepare({ project, action, ref, name = '' }) {
+  async function prepare({ project, action, ref, name = '', checkout = null }) {
     if (!['existing', 'new'].includes(action)) throw new Error('Select Existing branch or New branch.');
     const refs = await choices(project);
     const selected = refs.find(r => r.ref === ref);
     if (!selected) throw new Error('Selected branch/ref is stale; Refresh and choose again.');
     if (action === 'existing' && selected.reason) throw new Error(selected.reason);
+    if (action === 'existing' && checkout && selected.checkout !== checkout) throw new Error('Existing worktree changed; Refresh and select the branch again.');
     if (action === 'new') {
       if (!clean(name) || name.startsWith('-') || name.startsWith('@{')) throw new Error('Enter a valid new branch name.');
       await git(project.path, ['check-ref-format', '--branch', name]);
       if (refs.some(r => r.name === name)) throw new Error(`A local or fetched remote branch named ${name} already exists.`);
     } else name = selected.name;
-    const path = destination(project, name);
-    await validateDestination(path);
+    const reuse = action === 'existing' && !!selected.checkout;
+    const path = reuse ? selected.checkout : destination(project, name);
+    if (!reuse) await validateDestination(path);
     const commit = (await git(project.path, ['rev-parse', '--verify', `${ref}^{commit}`])).trim();
-    return { machine, project, action, ref, name, path, commit, upstream: action === 'existing' ? selected.kind === 'remote' ? ref : selected.upstream : '', remote: selected.kind === 'remote' };
+    const request = { machine, project, action, ref, name, path, commit, reuse, upstream: action === 'existing' ? selected.kind === 'remote' ? ref : selected.upstream : '', remote: selected.kind === 'remote' };
+    if (reuse) {
+      const result = await inspect(request);
+      if (result.kind !== 'created') throw new Error(result.error);
+    }
+    return request;
   }
   async function inspect(request) {
     try {
       if ((request.machine ?? null) !== machine || (request.project.machine ?? null) !== machine) throw new Error('Operation belongs to another machine.');
       const { project, path, name, commit, upstream } = request;
+      if (request.reuse) await validateProject(project);
       const rows = await worktrees(project.path);
       const row = rows.find(w => w.worktree === path);
-      if (row && !row.prunable && row.branch === `refs/heads/${name}` && row.HEAD === commit) {
+      if (row && !row.prunable && row.branch === `refs/heads/${name}` && (request.reuse || row.HEAD === commit)) {
         const actual = await identity(path);
-        const tracking = (await git(path, ['for-each-ref', '--format=%(upstream)', `refs/heads/${name}`])).trim();
-        if (actual.id === project.id && actual.top === await real(path) && tracking === upstream) return { kind: 'created', path, request };
+        if (actual.id === project.id && actual.top === await real(path)
+          && (request.reuse || (await git(path, ['for-each-ref', '--format=%(upstream)', `refs/heads/${name}`])).trim() === upstream)) return { kind: 'created', path, request };
       }
+      if (request.reuse) return { kind: 'partial', path, request, error: `Existing worktree is unavailable or changed at ${path}. Inspect Git before opening.` };
       const branch = (await git(project.path, ['for-each-ref', '--format=%(refname)', `refs/heads/${name}`])).trim().split('\n').includes(`refs/heads/${name}`);
       if (row || await occupied(path) || (request.action === 'new' || request.remote) && branch) return { kind: 'partial', path, error: `Incomplete operation: ${branch ? 'branch already exists; ' : ''}${row || await occupied(path) ? 'destination or worktree exists; ' : ''}inspect and repair it manually.`, request };
       return { kind: 'absent', path, request };
     } catch (e) { return { kind: 'partial', path: request.path, request, error: `Cannot reconcile operation: ${e.message}. Inspect Git before retrying.` }; }
   }
   async function create(request) {
+    if (request.reuse) return inspect(request);
     let error = '';
     try {
       if ((request.machine ?? null) !== machine) throw new Error('Operation belongs to another machine.');
@@ -261,6 +271,7 @@ export function createGit(runner, userHome, machine = null) {
       const refs = await choices(request.project);
       const selected = refs.find(r => r.ref === request.ref);
       if (!selected || request.action === 'existing' && selected.reason) throw new Error(selected?.reason || 'Selected ref is no longer available.');
+      if (request.action === 'existing' && selected.checkout) throw new Error('Branch now has an existing worktree; Refresh to open it.');
       if (request.action === 'new' && refs.some(r => r.name === request.name)) throw new Error(`A local or fetched remote branch named ${request.name} already exists.`);
       await validateDestination(request.path);
       await command('/bin/mkdir', ['-p', parent(request.path)]);

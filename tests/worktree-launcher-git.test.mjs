@@ -146,7 +146,8 @@ test('repository names support origin URL forms and fall back to the checkout fo
 test('refs keep identities, availability reasons and both remotes; bases include checked out branches', async t => {
   const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
   const refs = await f.api.choices(project);
-  assert.equal(refs.find(x => x.ref === 'refs/heads/main').reason, `Checked out at ${p}`);
+  assert.equal(refs.find(x => x.ref === 'refs/heads/main').checkout, p);
+  assert.equal(refs.find(x => x.ref === 'refs/heads/main').reason, '');
   assert.equal(refs.filter(x => x.name === 'feature/a').length, 2);
   assert(!refs.some(x => x.ref.endsWith('/HEAD')));
   assert.match(refs.find(x => x.ref === 'refs/remotes/origin/free').reason, /local branch/);
@@ -226,8 +227,68 @@ test('submission validates names, stale ref/project, changed eligibility and cur
   assert.equal(req.commit, git(p, 'rev-parse', 'main'));
   git(p, 'branch', '-D', 'free'); await assert.rejects(f.api.prepare({ project, action: 'new', ref: 'refs/heads/free', name: 'stale' }), /ref|branch/i);
   git(p, 'branch', 'free'); git(p, 'worktree', 'add', join(f.dir, 'occupied-branch'), 'free');
-  await assert.rejects(f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free' }), /Checked out/);
+  const existing = await f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free' });
+  assert.equal(existing.path, join(f.dir, 'occupied-branch')); assert.equal(existing.reuse, true);
   await assert.rejects(f.api.prepare({ project: { ...project, id: 'replaced' }, action: 'new', ref: 'refs/heads/main', name: 'stale' }), /identity|project/i);
+});
+
+test('existing checkouts open in place on either machine without Git or filesystem mutation', async t => {
+  const f = await fixture(t); const p = await f.repo('app');
+  const linked = join(f.dir, "custom checkouts ; 'literal'/free");
+  git(p, 'worktree', 'add', linked, 'free');
+  git(p, 'branch', '--set-upstream-to=origin/free', 'free');
+  await writeFile(join(linked, 'tracked'), 'original'); git(linked, 'add', 'tracked'); git(linked, 'commit', '-m', 'tracked');
+  await writeFile(join(linked, 'tracked'), 'staged'); git(linked, 'add', 'tracked');
+  await writeFile(join(linked, 'tracked'), 'unstaged'); await writeFile(join(linked, 'untracked'), 'keep');
+  const snapshot = path => [git(path, 'rev-parse', 'HEAD'), git(path, 'status', '--porcelain'), git(path, 'diff'), git(path, 'diff', '--cached')];
+  const before = snapshot(linked), primary = snapshot(p), worktrees = git(p, 'worktree', 'list', '--porcelain');
+  for (const machine of [null, 'devbox']) {
+    const calls = [];
+    const api = createGit((command, args, options) => { calls.push([command, args]); return runner(command, args, options); }, f.home, machine);
+    const project = (await api.discover({ project_root: f.root }))[0];
+    for (const [ref, path] of [['refs/heads/free', linked], ['refs/heads/main', p]]) {
+      const request = await api.prepare({ project, action: 'existing', ref, checkout: path });
+      assert.equal(request.path, path); assert.equal(request.reuse, true); assert.equal(request.machine, machine);
+      assert.equal((await api.create(request)).kind, 'created');
+      assert.equal((await api.inspect(request)).kind, 'created');
+    }
+    assert(!calls.some(([command, args]) => command === '/bin/mkdir' || command === 'git' && args.includes('add')));
+  }
+  assert.deepEqual(snapshot(linked), before); assert.deepEqual(snapshot(p), primary);
+  assert.equal(git(p, 'worktree', 'list', '--porcelain'), worktrees);
+  assert.equal(git(linked, 'for-each-ref', '--format=%(upstream)', 'refs/heads/free'), 'refs/remotes/origin/free');
+  assert.equal(await readFile(join(linked, 'untracked'), 'utf8'), 'keep');
+  const pending = await f.api.prepare({ project: await f.project(p), action: 'existing', ref: 'refs/heads/free', checkout: linked });
+  git(linked, 'commit', '-m', 'Advance existing branch'); git(linked, 'branch', '--unset-upstream', 'free');
+  const advanced = snapshot(linked);
+  assert.equal((await f.api.create(pending)).kind, 'created');
+  assert.equal((await f.api.inspect(pending)).kind, 'created');
+  assert.deepEqual(snapshot(linked), advanced);
+  assert.equal(git(linked, 'for-each-ref', '--format=%(upstream)', 'refs/heads/free'), '');
+});
+
+test('an existing checkout that moves or changes branch never falls back to creating a checkout', async t => {
+  const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
+  const linked = join(f.dir, 'linked'), moved = join(f.dir, 'moved');
+  git(p, 'worktree', 'add', linked, 'free');
+  const request = await f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free', checkout: linked });
+  git(p, 'worktree', 'move', linked, moved);
+  await assert.rejects(f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free', checkout: linked }), /changed|Refresh/);
+  assert.notEqual((await f.api.create(request)).kind, 'created');
+  const current = await f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free', checkout: moved });
+  git(moved, 'checkout', 'base');
+  assert.notEqual((await f.api.create(current)).kind, 'created');
+  assert.notEqual((await f.api.inspect(current)).kind, 'created');
+  assert.equal(git(moved, 'symbolic-ref', '--short', 'HEAD'), 'base');
+  assert.equal(git(p, 'worktree', 'list', '--porcelain').split('worktree ').length - 1, 2);
+  const fresh = await f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free' });
+  git(p, 'worktree', 'add', linked, 'free');
+  assert.equal((await f.api.create(fresh)).kind, 'absent');
+  await assert.rejects(realpath(fresh.path));
+  assert.equal(git(linked, 'symbolic-ref', 'HEAD'), 'refs/heads/free');
+  await rm(linked, { recursive: true });
+  assert.match((await f.api.choices(project)).find(ref => ref.ref === 'refs/heads/free').reason, /unavailable/);
+  await assert.rejects(f.api.prepare({ project, action: 'existing', ref: 'refs/heads/free' }), /unavailable/);
 });
 
 test('argv stays literal and paths reject slug, basename, occupied and symlink collisions', async t => {

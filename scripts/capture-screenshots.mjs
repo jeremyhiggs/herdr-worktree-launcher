@@ -46,6 +46,7 @@ try {
     await run('git', ['init', '--bare', remote]); await git('remote', 'add', 'origin', remote);
     await git('push', 'origin', 'main', 'develop');
     await git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    if (name === 'sample-api') await git('worktree', 'add', join(root, 'checkouts/sample-api-pagination'), 'feature/pagination');
   }
   await run(process.execPath, [join(repository, 'scripts/install-mod.mjs'), '--project-root', join(root, 'projects')]);
   const mod = join(root, 'app/mods/worktree-launcher');
@@ -69,7 +70,9 @@ try {
   const spaces = JSON.parse(await app(['ls'])), terminals = JSON.parse(await run('hc', ['ls']));
   if (spaces.spaces.length || terminals.terminals.length) throw new Error('Expected an empty sample app/core.');
   await app(['do', 'mod.open', '--name', 'worktree-launcher']);
-  for (const [scene, filename] of [['new', 'new-branch.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['create', 'worktree-opened.png']]) {
+  const before = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
+  for (const [scene, filename] of [['new', 'new-branch.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['create', 'worktree-opened.png']]) {
+    if (scene === 'create') await app(['do', 'mod.open', '--name', 'worktree-launcher']);
     await app(['do', `worktree-launcher.${scene}`]);
     const result = await waitFor(async () => {
       const value = JSON.parse(await readFile(join(root, 'app/data/screenshot-state.json'), 'utf8'));
@@ -78,8 +81,12 @@ try {
     }, value => value.scene === scene, scene);
     const state = await status(); if (state.errors.length) throw new Error(JSON.stringify(state.errors));
     await delay(800);
-    await app(['shot', join(output, filename)]); await delay(300);
-    console.log(`${filename}: ${JSON.stringify(result)}`);
+    await app(['shot', filename ? join(output, filename) : join(root, 'existing-worktree-opened.png')]); await delay(300);
+    if (scene === 'reuse') {
+      const after = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
+      if (before !== after || result.result !== join(root, 'checkouts/sample-api-pagination')) throw new Error('Existing worktree was not reused in place.');
+    }
+    console.log(`${filename ?? 'existing-worktree-opened.png (sample only)'}: ${JSON.stringify(result)}`);
   }
   await writeFile(join(root, 'capture.json'), JSON.stringify({ source: repository, captured: new Date().toISOString(), output }, null, 2));
   console.log(`Sample profile and logs: ${root}`);

@@ -8,12 +8,12 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 80 passed, 1 skipped | Git fixtures, form state, recovery, settings, installation, and test-app isolation |
+| `pnpm test` | 84 passed, 1 skipped | Git fixtures, form state, recovery, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
-| Sample creation and opening | Passed | Real branch and worktree creation, primary project space, grouped worktree space, and focused shell |
-| README screenshots | Four inspected images | New branch, disabled checked-out branches, available programs, and the resulting worktree |
-| Remote integration | Not repeated for this documentation pass | The default suite skips the opt-in connected-machine test |
+| Sample creation and opening | Passed | Real creation, existing checkout reuse, grouped worktree spaces, and focused shells |
+| README screenshots | Four inspected images | New branch, selectable existing worktrees, available programs, and the resulting worktree |
+| Remote integration | Passed separately on devbox | Four Git creation flows and opening each checkout in place through the remote Git adapter |
 
 The current checks use Node 24.22.1, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -25,7 +25,7 @@ The tests create real Git repositories and local bare remotes. App-opening tests
 | --- | --- |
 | Discovery | Root-relative names, ignored/build/bare/JJ-only exclusions, linked-worktree deduplication, and broken Git metadata |
 | Scan integrity | Batched local/remote scans, command-count bounds, failed commands, and truncated output |
-| Existing branches | Attached local checkout, correct remote tracking, checked-out branches, and local-name collisions |
+| Existing branches | Attached local checkout, correct remote tracking, existing-folder reuse, and local-name collisions |
 | New branches | Local or fetched remote base, no upstream, invalid names, collisions, and live ref changes |
 | Filesystem safety | Literal shell characters, occupied destinations, symlink ancestors, and outside-root identity changes |
 | Checkout preservation | Dirty primary checkout, index, tracked contents, and untracked files |
@@ -35,6 +35,12 @@ The tests create real Git repositories and local bare remotes. App-opening tests
 | Recovery | Git failures, partial artifacts, opening failures, pending operations, and open-only retry |
 | Installation | File copying, native check, key conflicts, backups, explicit updates, settings preservation, and custom app homes |
 | Sample app | Isolated app/core state, temporary Git fixtures, scoped shutdown, startup failures, and shell startup behavior |
+
+Existing-checkout tests cover linked and primary checkouts on both machine adapters. They preserve staged, unstaged, and untracked contents, HEAD, upstream, and the worktree list.
+
+Existing-checkout sessions accept later commits and upstream changes on the same branch. Opening never resets either value to the earlier selection.
+
+Moved, missing, or switched checkouts fail revalidation. A branch checked out after preparation never causes creation of a second checkout. Session-opening recovery retains the existing path and selected program.
 
 The program-selection tests cover local and remote requests. They do not start Claude Code, Pi, OpenCode, or Codex.
 
@@ -46,6 +52,8 @@ The driver uses the app's real commands to create `feature/rate-limits` from `ma
 
 The app opens the primary project first, then the worktree space with a focused shell. The operation record clears after success. The captured sidebar shows the worktree beneath its project.
 
+Another scene opens `feature/pagination` in a pre-existing custom checkout outside the worktree store. The worktree list stays unchanged. Its shell screenshot remains in the retained sample directory.
+
 The sample uses separate home, app, core-session, socket, shell, and XDG directories. Its shutdown targets only that app and core. Logs and fixtures remain in the printed temporary directory.
 
 The capture activates the sample window and dismisses its first-run overlays. `herdr-app shot` supplies the actual window images. All four images received a visual check for content and private data.
@@ -53,11 +61,13 @@ The capture activates the sample window and dismisses its first-run overlays. `h
 | Image | Demonstration |
 | --- | --- |
 | [New branch](../screenshots/new-branch.png) | Machine, saved root, project, base, name, destination, and enabled Create |
-| [Existing branch](../screenshots/existing-branch.png) | Hidden name field, checked-out branch path, and unavailable remote-name collisions |
+| [Existing branch](../screenshots/existing-branch.png) | Selectable existing checkouts, their paths, Open worktree, and unavailable remote-name collisions |
 | [Open with](../screenshots/open-with.png) | Shell plus the OpenCode and Codex programs detected in the sample |
 | [Opened worktree](../screenshots/worktree-opened.png) | Grouped worktree space and its shell |
 
 No personal project, normal app settings, or live core restart forms part of this capture. The sample does not launch an agent or connect a remote machine.
+
+The separate remote test uses disposable repositories on devbox. It creates each branch flow, prepares that checkout again, and reuses the same folder. It checks attached HEAD and upstream. This test does not open a remote app session.
 
 ## Earlier native observations
 

@@ -47,7 +47,9 @@ Discovery excludes ignored repositories, bare repositories, native JJ-only works
 
 Local and fetched remote branches appear in the branch picker. Symbolic remote HEAD entries do not appear. The launcher never fetches automatically.
 
-For **Existing branch**, a checked-out local branch is unavailable. A remote branch is also unavailable when its local branch name already exists.
+For **Existing branch**, a checked-out local branch opens its existing folder with **Open worktree**. The launcher preserves its files, branch, and tracking settings.
+
+The folder can be outside the standard worktree store, including the primary checkout. Missing or invalid checkouts remain unavailable. A remote branch remains unavailable when its local branch name already exists.
 
 Selecting a remote branch for **Existing branch** creates a local branch that tracks that specific remote. **New branch** creates a branch without an upstream, including from a remote base.
 

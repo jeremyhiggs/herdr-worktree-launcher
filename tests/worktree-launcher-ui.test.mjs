@@ -92,6 +92,19 @@ test('Enter selects an open picker choice and root Enter still saves configurati
   assert.equal(creates, 1);
 });
 
+test('existing checked-out branches can be selected and opened with Enter', async () => {
+  const { view, cx } = keyboardView();
+  view.buttons.create.focus = () => {};
+  view.model.project = {}; view.model.action = 'existing';
+  const ref = { ref: 'refs/heads/feature', name: 'feature', label: 'feature · local', reason: '', checkout: '/custom/feature' };
+  view.choose(ref, cx, 'ref');
+  assert.equal(view.model.ref, ref); assert.equal(view.model.path, '/custom/feature');
+  assert.equal(view.model.canCreate, true);
+  let opens = 0; view.model.submit = async () => { opens++; }; view.task = (_cx, work) => work();
+  view.inputs.ref.handlers.submit({ secondary: false }, cx);
+  assert.equal(opens, 1);
+});
+
 function browseView(git) {
   const view = new Launcher(), pending = [];
   view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true, launch: { key: 'shell', label: 'Shell' } };
