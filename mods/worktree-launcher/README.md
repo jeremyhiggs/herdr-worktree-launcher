@@ -95,14 +95,14 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 
 1. Open **Worktree Launcher**.
 2. Select **Local** or a connected machine, such as **devbox**. The initial target follows the active space.
-3. If its root is unset, enter an absolute path and select **Save**. Local setup also offers **Browse**. Remote paths are validated on that remote machine.
+3. Enter an absolute project root or use **Browse**, then select **Save**. Remote paths are validated on that remote machine. **Saving…** appears on Save until the save and project refresh finish; the other controls are disabled during that operation.
 4. Search for a project and select a result with the mouse or Up/Down and Enter.
 5. Choose **New branch** or **Existing branch**.
 6. Select a local or fetched remote branch. New branch uses it as a base; Existing branch checks it out directly. Switching actions preserves the selected branch.
 7. For a new branch, enter the name in the field below the branch picker. This field is hidden for Existing branch.
 8. Read the destination and activate **Create** or press Cmd+Enter.
 
-**Change root** edits the selected machine's root. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
+The project-root field always remains visible. Changing machine clears the previous machine's path immediately and displays the selected machine's saved root before project discovery finishes. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
 
 The UI mod is installed only in the local app. Remote discovery, validation, and Git commands use Herdr Core on the selected machine. No separate remote mod or Node installation is needed.
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { WorktreeModel } from '../mods/worktree-launcher/model.js';
+import { createConfigStore } from '../mods/worktree-launcher/config.js';
 
 // Load the real view methods without a native window; controls below record focus.
 const modules = {
@@ -17,7 +18,7 @@ const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
 function browseView(git) {
   const view = new Launcher(), pending = [];
-  view.model = { machine: 'devbox', git, generation: 1, editable: true, root: '/saved', rootReady: true };
+  view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true };
   view.syncedMachine = 'devbox'; view.syncedRoot = '/saved';
   view.rootRevision = 0; view.rootDraft = false;
   view.filters = {}; view.directoryGeneration = 0;
@@ -63,6 +64,56 @@ test('slow root saves preserve a newer draft and cannot steal focus after switch
     assert.equal(view.inputs.root.value(), change === 'draft' ? '/newer-draft' : '/new');
     assert.deepEqual(focus, ['name']);
   }
+});
+
+test('switching to a remote machine shows its saved root before slow project discovery completes', async () => {
+  let release;
+  const slow = new Promise(resolve => { release = resolve; });
+  const model = new WorktreeModel({
+    config: async machine => ({ project_root: machine ? '/remote/projects' : '/local/projects' }),
+    journal: { load: async () => null },
+    connect: async machine => ({ machine, discover: async () => machine ? slow : [] }),
+  });
+  await model.refresh();
+  const { view, pending } = browseView(model.git); view.model = model;
+  view.syncedMachine = null; view.syncedRoot = model.root; view.inputs.root.set_value(model.root);
+  for (const field of ['name', 'ref']) view.inputs[field] = { set_value() {} };
+  view.task = (_cx, work) => { pending.push(work(null, () => view.syncContext())); };
+  view.choose({ name: 'devbox', label: 'devbox' }, {}, 'machine');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(model.phase, 'loading');
+  assert.equal(view.inputs.root.value(), '/remote/projects');
+  release([]); await pending[0];
+});
+
+test('remote saves stay busy through discovery and reload the saved machine-specific root', async () => {
+  let text = JSON.stringify({ project_root: '/local/projects', remote_project_roots: { devbox: '/saved' } });
+  const config = createConfigStore(async () => text, async (_path, next, expected) => { assert.equal(text, expected); text = next; }, '/config.json');
+  let slow = false, release;
+  const wait = new Promise(resolve => { release = resolve; });
+  const options = {
+    machine: 'devbox', config: machine => config.get(machine), saveRoot: (machine, root) => config.set(machine, root),
+    journal: { load: async () => null },
+    connect: async machine => ({ machine, validateRoot: async ({ project_root }) => project_root, discover: async () => slow ? wait : [] }),
+  };
+  const model = new WorktreeModel(options); await model.refresh();
+  const { view } = browseView(model.git); view.model = model;
+  view.inputs.root.set_value('/remote/new'); view.rootDraft = true;
+  slow = true;
+  const pending = view.configureRoot('/remote/new', () => view.syncContext());
+  assert.equal(view.savingRoot, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(model.phase, 'loading'); assert.equal(view.savingRoot, true);
+  view.choose({ name: 'other', label: 'other' }, {}, 'machine');
+  assert.equal(model.machine, 'devbox');
+  release([]); await pending;
+  assert.equal(view.savingRoot, false);
+  assert.equal(view.inputs.root.value(), '/remote/new');
+  slow = false;
+  const reopened = new WorktreeModel(options); await reopened.refresh();
+  assert.equal(reopened.root, '/remote/new');
+  await reopened.selectMachine(null); assert.equal(reopened.root, '/local/projects');
+  await reopened.selectMachine('devbox'); assert.equal(reopened.root, '/remote/new');
 });
 
 test('remote Browse starts at the remote home when unset, then navigates children and parent', async () => {

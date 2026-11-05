@@ -97,10 +97,11 @@ export class WorktreeModel {
     catch { return ''; }
   }
   resetFields() { this.refs = []; this.ref = null; this.name = ''; this.error = ''; }
-  async refresh() {
+  async refresh(changed = () => {}) {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
     this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.rootReady = false; this.phase = 'loading';
+    changed();
     try {
       const pending = await this.journal.load();
       if (this.closed || generation !== this.generation) return;
@@ -108,6 +109,7 @@ export class WorktreeModel {
       const config = pending ? { project_root: pending.project.root } : await this.config(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.root = config.project_root ?? '';
+      changed();
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
@@ -128,21 +130,22 @@ export class WorktreeModel {
       this.error = e.message; this.phase = 'editing';
     }
   }
-  async selectMachine(machine) {
+  async selectMachine(machine, changed) {
     if (!this.editable || this.machine === machine) return false;
     this.machine = machine; this.root = '';
-    await this.refresh();
+    await this.refresh(changed);
     return true;
   }
-  async configureRoot(root) {
+  async configureRoot(root, changed = () => {}) {
     if (!this.editable || !this.git) return;
     this.generation++;
     this.phase = 'configuring'; this.error = '';
+    changed();
     try {
       const canonical = await this.git.validateRoot({ project_root: root });
       await this.saveRoot(this.machine, canonical);
       this.phase = 'editing';
-      const pending = this.refresh(), generation = this.generation;
+      const pending = this.refresh(changed), generation = this.generation;
       await pending;
       return !this.closed && generation === this.generation && this.rootReady && !this.error;
     } catch (error) { this.error = error.message; this.phase = 'editing'; return false; }
