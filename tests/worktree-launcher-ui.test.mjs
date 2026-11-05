@@ -6,9 +6,9 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 
 // Load the real view methods without a native window; controls below record focus.
 const modules = {
-  'gpui-kit': 'export class View {} export const div = null;',
-  'gpui-base': 'export const v_flex=null,h_flex=null,InputState=null,Input=null,Button=null,Popup=null,v_virtual_list=null,VirtualListScrollHandle=null,Scrollbar=null,TextView=null;',
-  herdr: 'export const exec=null,home=null,appHome=null,readTextFile=null,writeTextFile=null,spaces=null,panes=null,machines=null,pickFolder=null,shared=null,setShared=null,run=null,theme=null; export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
+  'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
+  'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({on(){},set_value(){},value(){return \"\"},focus(){}})};',
+  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>[],panes=null,machines=null,pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
   resolve(specifier, context, next) { return Object.hasOwn(modules, specifier) ? { url: `native:${specifier}`, shortCircuit: true } : next(specifier, context); },
@@ -16,25 +16,42 @@ registerHooks({
 });
 const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
-test('Escape release closes the launcher when a focused native input consumed key-down', () => {
+function keyboardView(phase = 'editing') {
+  globalThis.launcherClosedOverlays = [];
+  const actions = new Map(), bindings = [], contexts = [];
+  globalThis.launcherElement = () => {
+    const element = new Proxy({}, { get: (_target, key) => (...args) => {
+      if (key === 'on_action') actions.set(args[0], args[1]);
+      if (key === 'key_context') contexts.push(args[0]);
+      return element;
+    } });
+    return element;
+  };
+  const view = new Launcher(); view.task = () => {};
+  const cx = { focus_handle: () => ({}), bind_keys: rows => bindings.push(...rows), stop_propagation() {}, notify() {} };
+  view.init({}, cx); view.model.phase = phase; view.render();
+  const binding = bindings.find(row => row.keystroke === 'escape');
+  assert(binding, 'Escape needs a native key binding, not just raw key handlers');
+  assert(contexts.includes(binding.context), 'The binding must be scoped to the launcher');
+  assert(actions.has(binding.action), 'The native Escape action must have a handler');
+  return { view, pressEscape: () => actions.get(binding.action)({ action: binding.action }, cx) };
+}
+
+test('the registered native Escape action closes the launcher without a raw key event', () => {
   for (const field of ['machine', 'root', 'project', 'ref', 'name', null]) {
-    globalThis.launcherClosedOverlays = [];
-    const view = new Launcher(); view.model = new WorktreeModel({});
-    view.model.phase = 'editing'; view.activeInput = field; view.openField = field;
-    let stopped = 0;
-    view.keyUp({ key: 'escape' }, { stop_propagation() { stopped++; }, notify() {} });
+    const { view, pressEscape } = keyboardView();
+    view.activeInput = field; view.openField = field;
+    pressEscape();
     assert.equal(view.model.closed, true);
     assert.deepEqual(globalThis.launcherClosedOverlays, ['fixture-overlay']);
-    assert.equal(stopped, 1);
   }
 });
 
-test('Escape release preserves active operations and other key releases do nothing', () => {
-  for (const phase of ['configuring', 'creating', 'opening', 'saving-root', 'editing']) {
-    globalThis.launcherClosedOverlays = [];
-    const view = new Launcher(); view.model = new WorktreeModel({});
-    view.savingRoot = phase === 'saving-root'; view.model.phase = phase === 'saving-root' ? 'loading' : phase;
-    view.keyUp({ key: phase === 'editing' ? 'enter' : 'escape' }, { stop_propagation() {}, notify() {} });
+test('the native Escape action preserves active saves and worktree operations', () => {
+  for (const phase of ['configuring', 'creating', 'opening', 'saving-root']) {
+    const { view, pressEscape } = keyboardView(phase === 'saving-root' ? 'loading' : phase);
+    view.savingRoot = phase === 'saving-root';
+    pressEscape();
     assert.equal(view.model.closed, false);
     assert.deepEqual(globalThis.launcherClosedOverlays, []);
   }
