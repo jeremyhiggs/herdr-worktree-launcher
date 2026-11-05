@@ -222,6 +222,11 @@ export default class WorktreeLauncher extends View {
   dismiss() { if (!this.savingRoot && this.model.close()) closeOverlay(props().overlay); }
   close() { this.model.closed = true; this.model.generation++; }
 
+  keyUp(event, cx) {
+    // Native inputs dispatch an Escape action instead of bubbling key-down.
+    if (event.key === 'escape') this.key(event, cx);
+  }
+
   key(event, cx) {
     if (this.savingRoot) { cx.stop_propagation(); return; }
     if (event.key === 'tab') {
@@ -283,6 +288,7 @@ export default class WorktreeLauncher extends View {
     const picker = field => Popup.new(`worktree-${field}-picker`, div().w_full().on_click((_e, cx) => { this.field = field; this.openField = field; cx.notify(); }).child(input(field)))
       .w_full().anchor('top_left').when(this.openField === field && m.editable, el => el.content(this.choiceList(field, t)));
     return v_flex().id('worktree-launcher').track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .on_key_up((e, cx) => this.keyUp(e, cx))
       .on_size_change((size, cx) => { if (this.width !== size.width) { this.width = size.width; cx.notify(); } })
       .on_mouse_down('left', (_e, cx) => cx.stop_propagation())
       .size_full().p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(13)

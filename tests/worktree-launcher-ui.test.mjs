@@ -8,13 +8,37 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 const modules = {
   'gpui-kit': 'export class View {} export const div = null;',
   'gpui-base': 'export const v_flex=null,h_flex=null,InputState=null,Input=null,Button=null,Popup=null,v_virtual_list=null,VirtualListScrollHandle=null,Scrollbar=null,TextView=null;',
-  herdr: 'export const exec=null,home=null,appHome=null,readTextFile=null,writeTextFile=null,spaces=null,panes=null,machines=null,pickFolder=null,shared=null,setShared=null,run=null,theme=null,props=null,closeOverlay=null;',
+  herdr: 'export const exec=null,home=null,appHome=null,readTextFile=null,writeTextFile=null,spaces=null,panes=null,machines=null,pickFolder=null,shared=null,setShared=null,run=null,theme=null; export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
   resolve(specifier, context, next) { return Object.hasOwn(modules, specifier) ? { url: `native:${specifier}`, shortCircuit: true } : next(specifier, context); },
   load(url, context, next) { return url.startsWith('native:') ? { format: 'module', source: modules[url.slice(7)], shortCircuit: true } : next(url, context); },
 });
 const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
+
+test('Escape release closes the launcher when a focused native input consumed key-down', () => {
+  for (const field of ['machine', 'root', 'project', 'ref', 'name', null]) {
+    globalThis.launcherClosedOverlays = [];
+    const view = new Launcher(); view.model = new WorktreeModel({});
+    view.model.phase = 'editing'; view.activeInput = field; view.openField = field;
+    let stopped = 0;
+    view.keyUp({ key: 'escape' }, { stop_propagation() { stopped++; }, notify() {} });
+    assert.equal(view.model.closed, true);
+    assert.deepEqual(globalThis.launcherClosedOverlays, ['fixture-overlay']);
+    assert.equal(stopped, 1);
+  }
+});
+
+test('Escape release preserves active operations and other key releases do nothing', () => {
+  for (const phase of ['configuring', 'creating', 'opening', 'saving-root', 'editing']) {
+    globalThis.launcherClosedOverlays = [];
+    const view = new Launcher(); view.model = new WorktreeModel({});
+    view.savingRoot = phase === 'saving-root'; view.model.phase = phase === 'saving-root' ? 'loading' : phase;
+    view.keyUp({ key: phase === 'editing' ? 'enter' : 'escape' }, { stop_propagation() {}, notify() {} });
+    assert.equal(view.model.closed, false);
+    assert.deepEqual(globalThis.launcherClosedOverlays, []);
+  }
+});
 
 function browseView(git) {
   const view = new Launcher(), pending = [];
