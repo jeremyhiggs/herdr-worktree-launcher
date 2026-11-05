@@ -4,6 +4,72 @@ const basename = path => path.slice(path.lastIndexOf('/') + 1);
 const inside = (path, root) => path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
 const pruned = ['node_modules', 'vendor', 'target', 'build', 'dist', '.next', 'coverage'];
 
+// Run metadata checks beside the remote filesystem instead of paying an RPC per check.
+// Paths are positional arguments; NUL records preserve spaces and shell metacharacters.
+const remoteDiscovery = `
+set -uo pipefail
+export LC_ALL=C
+root=$1
+shift
+inside() { [[ "$1" == "$root" || "$1" == "\${root%/}/"* ]]; }
+ignored() {
+  local path=$1 p=\${1%/*} code
+  [[ -n "$p" ]] || p=/
+  while inside "$p"; do
+    if [[ -e "$p/.git" || -L "$p/.git" ]]; then
+      git --no-optional-locks -C "$p" check-ignore --quiet -- "\${path:\${#p}+1}"
+      code=$?
+      if (( code > 1 )); then printf '%s\\n' 'Cannot inspect project ignore rules.' >&2; fi
+      return "$code"
+    fi
+    [[ "$p" != "$root" && "$p" != / ]] || break
+    p=\${p%/*}
+    [[ -n "$p" ]] || p=/
+  done
+  return 1
+}
+/usr/bin/find "$root" '(' -type d '(' "$@" ')' -prune ')' -o '(' -name .git -print0 -prune ')' |
+while IFS= read -r -d '' marker; do
+  candidate=\${marker%/*}
+  [[ -n "$candidate" ]] || candidate=/
+  [[ ! "$candidate" =~ [[:cntrl:]] ]] || continue
+  ignored "$candidate"; code=$?
+  case "$code" in 0) continue ;; 1) ;; *) exit "$code" ;; esac
+  paths=$(git --no-optional-locks -C "$candidate" rev-parse --path-format=absolute --show-toplevel --git-common-dir)
+  code=$?
+  case "$code" in 0) ;; 128) continue ;; *) exit "$code" ;; esac
+  paths=$(/bin/realpath "\${paths%%$'\\n'*}" "\${paths#*$'\\n'}") || exit $?
+  top=\${paths%%$'\\n'*}
+  common=\${paths#*$'\\n'}
+  primary=$(git --no-optional-locks -C "$top" worktree list --porcelain -z | {
+    IFS= read -r -d '' first || exit 1
+    [[ "$first" == 'worktree '* ]] || exit 1
+    printf '%s' "\${first#worktree }"
+    cat >/dev/null
+  })
+  code=$?
+  case "$code" in 0) ;; 128) continue ;; *) exit "$code" ;; esac
+  primary=$(/bin/realpath "$primary") || exit $?
+  ignored "$primary"; code=$?
+  case "$code" in 0) continue ;; 1) ;; *) exit "$code" ;; esac
+  origin=$(git --no-optional-locks -C "$primary" config --get remote.origin.url)
+  code=$?
+  case "$code" in 0|1) ;; *) exit "$code" ;; esac
+  printf '%s\\0' "$candidate" "$top" "$common" "$primary" "$origin" "$code"
+done
+code=$?
+(( code == 0 )) || exit "$code"
+printf '%s\\0' worktree-launcher-scan-complete
+`;
+
+function repositoryName(path, origin) {
+  if (origin === null) return basename(path);
+  const url = (/^[a-z][a-z0-9+.-]*:\/\//i.test(origin) ? origin.split(/[?#]/, 1)[0] : origin).replace(/\/+$/, '');
+  const name = (url.includes('/') ? basename(url) : url.slice(url.lastIndexOf(':') + 1)).replace(/\.git$/, '');
+  if (!clean(name) || ['.', '..'].includes(name)) throw new Error('Origin has no safe repository name.');
+  return name;
+}
+
 export async function connectGit(exec, localHome, machine = null) {
   const runner = (command, args, options) => exec(command, args, { ...options, on: machine });
   let userHome = localHome;
@@ -52,14 +118,11 @@ export function createGit(runner, userHome, machine = null) {
     const primary = (await worktrees(top))[0];
     if (!primary?.worktree || primary.bare) throw new Error('No primary checkout.');
     const primaryPath = await real(primary.worktree);
-    let name = basename(primaryPath);
+    let origin = null;
     try {
-      const origin = (await git(primaryPath, ['config', '--get', 'remote.origin.url'])).trim();
-      const url = (/^[a-z][a-z0-9+.-]*:\/\//i.test(origin) ? origin.split(/[?#]/, 1)[0] : origin).replace(/\/+$/, '');
-      name = (url.includes('/') ? basename(url) : url.slice(url.lastIndexOf(':') + 1)).replace(/\.git$/, '');
-      if (!clean(name) || ['.', '..'].includes(name)) throw new Error('Origin has no safe repository name.');
+      origin = (await git(primaryPath, ['config', '--get', 'remote.origin.url'])).trim();
     } catch (error) { if (error.code !== 1) throw error; }
-    return { top, id, path: primaryPath, basename: name };
+    return { top, id, path: primaryPath, basename: repositoryName(primaryPath, origin) };
   }
   async function rootOf(config) {
     const root = config?.project_root;
@@ -92,8 +155,28 @@ export function createGit(runner, userHome, machine = null) {
   async function discover(config) {
     const root = await rootOf(config);
     const expr = pruned.flatMap((name, i) => [...(i ? ['-o'] : []), '-name', name]);
-    const found = await command('/usr/bin/find', [root, '(', '-type', 'd', '(', ...expr, ')', '-prune', ')', '-o', '(', '-name', '.git', '-print0', '-prune', ')']);
+    let repositories = [];
+    if (machine) {
+      const fields = (await command('/bin/bash', ['-c', remoteDiscovery, 'worktree-launcher', root, ...expr])).split('\0');
+      if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-scan-complete' || fields.length % 6) throw new Error('Remote project scan returned incomplete metadata.');
+      for (let i = 0; i < fields.length; i += 6) {
+        const [candidate, top, id, path, origin, missing] = fields.slice(i, i + 6);
+        if (![candidate, top, id, path].every(clean) || !['0', '1'].includes(missing)) throw new Error('Remote project scan returned invalid metadata.');
+        repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim()) });
+      }
+    } else repositories = await localProjects(root, expr);
     const projects = new Map();
+    for (const repo of repositories) {
+      if (repo.path === root || !inside(repo.path, root)) continue;
+      const label = repo.path.slice(root.length + (root === '/' ? 0 : 1));
+      if (label.split('/').some(p => pruned.includes(p))) continue;
+      projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: repo.basename });
+    }
+    return [...projects.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+  async function localProjects(root, expr) {
+    const found = await command('/usr/bin/find', [root, '(', '-type', 'd', '(', ...expr, ')', '-prune', ')', '-o', '(', '-name', '.git', '-print0', '-prune', ')']);
+    const repositories = [];
     for (const marker of found.split('\0').filter(Boolean)) {
       const candidate = parent(marker);
       if (!clean(candidate) || await ignored(candidate, root)) continue;
@@ -103,12 +186,9 @@ export function createGit(runner, userHome, machine = null) {
         if (e.code === 128 || e.message === 'Bare repositories are unavailable.') continue;
         throw e;
       }
-      if (repo.path === root || !inside(repo.path, root)) continue;
-      const label = repo.path.slice(root.length + (root === '/' ? 0 : 1));
-      if (label.split('/').some(p => pruned.includes(p)) || await ignored(repo.path, root)) continue;
-      projects.set(repo.id, { id: repo.id, machine, path: repo.path, root, label, basename: repo.basename });
+      if (!await ignored(repo.path, root)) repositories.push(repo);
     }
-    return [...projects.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return repositories;
   }
   async function validateProject(project) {
     if (!project || !clean(project.path) || !clean(project.root)) throw new Error('Select a project.');

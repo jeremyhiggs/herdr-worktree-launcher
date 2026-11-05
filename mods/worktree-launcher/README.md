@@ -5,6 +5,7 @@
 - macOS with Herdr app/core.
 - Git, `find`, `realpath`, `test`, and `mkdir` on each target machine.
 - Linux or macOS for remote targets, connected through Herdr Core.
+- Bash at `/bin/bash` on remote targets for batched project discovery.
 - One absolute, readable project directory per machine, configured in the launcher.
 
 The mod was checked with Herdr app 0.1.13 and core 0.1.18. The installer runs a fresh module check on your installed version.
@@ -105,6 +106,8 @@ Merge this entry into the app-home `keys.json`. Preserve its other entries. Do n
 The project-root field always remains visible. Changing machine clears the previous machine's path immediately and displays the selected machine's saved root before project discovery finishes. Saving preserves other machines' roots and unrelated configuration. Changing machine clears project and branch selections. Creation stays on the selected machine even if another space becomes active.
 
 The UI mod is installed only in the local app. Remote discovery, validation, and Git commands use Herdr Core on the selected machine. No separate remote mod or Node installation is needed.
+
+Remote discovery batches filesystem and Git metadata checks into one remote Bash scan. Refresh always scans again. Branch selection and creation still revalidate current repository state. A failed or truncated scan reports an error instead of showing a partial project list.
 
 Enter in a search field selects a choice. It does not submit the form. Tab and Shift+Tab move between controls.
 

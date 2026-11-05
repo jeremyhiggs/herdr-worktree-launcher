@@ -50,6 +50,36 @@ test('discovery distinguishes basenames, prunes build/ignored/bare/JJ and dedupl
   await mkdir(join(f.dir, 'empty')); assert.deepEqual(await f.api.discover({ project_root: join(f.dir, 'empty') }), []);
 });
 
+test('remote discovery batches metadata without changing discovery rules or literal paths', async t => {
+  const f = await fixture(t); const p = await f.repo("one ; 'literal'/app");
+  await f.repo('two/app'); await f.repo('node_modules/hidden');
+  await f.repo("one ; 'literal'/app/ignored"); await writeFile(join(p, '.gitignore'), 'ignored/\n');
+  git(p, 'worktree', 'add', join(f.root, 'linked'), 'free');
+  await mkdir(join(f.root, 'native-jj/.jj'), { recursive: true }); git(f.root, 'init', '--bare', 'bare.git');
+  const local = await f.api.discover({ project_root: f.root });
+  const calls = [];
+  const remote = createGit((command, args, options) => { calls.push(command); return runner(command, args, options); }, f.home, 'devbox');
+  const projects = await remote.discover({ project_root: f.root });
+  assert.deepEqual(projects, local.map(project => ({ ...project, machine: 'devbox' })));
+  assert(calls.length <= 5, `Expected one scan plus root validation, got ${calls.length} calls`);
+  assert.equal(calls.filter(command => command === '/bin/bash').length, 1);
+  const nested = await remote.discover({ project_root: join(f.root, "one ; 'literal'") });
+  assert.equal(nested.length, 1); assert.equal(nested[0].path, p);
+});
+
+test('remote discovery rejects failed scans instead of exposing a partial project list', async t => {
+  const f = await fixture(t); await f.repo('app');
+  const blocked = join(f.root, 'unreadable'); await mkdir(blocked); await chmod(blocked, 0);
+  try {
+    const remote = createGit(runner, f.home, 'devbox');
+    await assert.rejects(remote.discover({ project_root: f.root }), /Permission denied/);
+  } finally { await chmod(blocked, 0o700); }
+  const truncated = createGit((command, args, options) => command === '/bin/bash'
+    ? Promise.resolve({ code: 0, stdout: ['/candidate', '/top', '/id', '/project', 'origin', '0', ''].join('\0'), stderr: '' })
+    : runner(command, args, options), f.home, 'devbox');
+  await assert.rejects(truncated.discover({ project_root: f.root }), /incomplete metadata/);
+});
+
 test('directory browsing lists immediate folders and symlinks with literal names, plus the parent', async t => {
   const f = await fixture(t);
   const names = ['one', 'two words', 'literal<&>$(echo nope)'];

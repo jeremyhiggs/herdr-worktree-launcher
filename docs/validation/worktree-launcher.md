@@ -1,5 +1,15 @@
 # Worktree Launcher validation
 
+## Remote discovery performance — 2026-11-05
+
+A scan of the connected devbox found the same 11 projects before and after batching. The original scan took 12.41 seconds and 411 remote commands; the batched scan took 0.90 seconds and 7 commands, including connection and root validation. These are observed single-run timings, not a latency guarantee. The project records matched exactly.
+
+Remote filesystem and Git checks now run in one Bash invocation. No Node installation, remote helper files, network fetch, or cached project list is involved. Selection and creation retain their live validation. Tests compare local and batched discovery with ignored repositories, build directories, linked worktrees, bare/JJ directories, and literal shell characters in paths. Failed scans and missing completion markers reject partial results.
+
+The full suite passed 68 tests, with the opt-in remote test skipped. The live devbox test passed separately across all four branch flows using disposable repositories.
+
+## Original validation
+
 Date: 2026-10-31.
 
 Source implementation is complete. Full interactive acceptance remains incomplete because native keyboard and mouse automation was unavailable.
