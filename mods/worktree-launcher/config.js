@@ -1,10 +1,11 @@
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 
-export function createConfigStore(read, write, path) {
+export function createConfigStore(read, write, path, legacyPath) {
   async function load() {
     const text = await read(path);
+    const source = text === null && legacyPath ? await read(legacyPath) : text;
     let config;
-    try { config = text === null ? {} : JSON.parse(text); }
+    try { config = source === null ? {} : JSON.parse(source); }
     catch { throw new Error('Malformed config.json: expected a JSON object.'); }
     if (!object(config)) throw new Error('Malformed config.json: expected a JSON object.');
     if (config.remote_project_roots !== undefined && !object(config.remote_project_roots)) throw new Error('Malformed config.json: remote_project_roots must be an object.');

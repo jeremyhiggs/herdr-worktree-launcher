@@ -2,6 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createConfigStore } from '../mods/worktree-launcher/config.js';
 
+test('legacy mod configuration migrates outside the watched folder without losing other roots', async () => {
+  const legacy = JSON.stringify({ project_root: '/local/projects', remote_project_roots: { devbox: '/remote/projects', other: '/srv/projects' }, personal: true });
+  const files = new Map([['/mod/config.json', legacy]]);
+  const store = createConfigStore(async path => files.get(path) ?? null, async (path, text, expected) => {
+    assert.equal(path, '/data/settings.json'); assert.equal(expected, files.get(path) ?? null); files.set(path, text);
+  }, '/data/settings.json', '/mod/config.json');
+  assert.equal((await store.get('devbox')).project_root, '/remote/projects');
+  await store.set('devbox', '/remote/next');
+  assert.equal(files.get('/mod/config.json'), legacy);
+  assert.equal((await store.get('devbox')).project_root, '/remote/next');
+  assert.equal((await store.get(null)).project_root, '/local/projects');
+  assert.equal((await store.get('other')).project_root, '/srv/projects');
+  assert.equal(JSON.parse(files.get('/data/settings.json')).personal, true);
+});
+
 test('missing configuration supports setup and stores independent local and remote roots', async () => {
   let text = null;
   const store = createConfigStore(async () => text, async (_path, next, expected) => {

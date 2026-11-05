@@ -142,8 +142,10 @@ export class WorktreeModel {
       const canonical = await this.git.validateRoot({ project_root: root });
       await this.saveRoot(this.machine, canonical);
       this.phase = 'editing';
-      await this.refresh();
-    } catch (error) { this.error = error.message; this.phase = 'editing'; }
+      const pending = this.refresh(), generation = this.generation;
+      await pending;
+      return !this.closed && generation === this.generation && this.rootReady && !this.error;
+    } catch (error) { this.error = error.message; this.phase = 'editing'; return false; }
   }
   async selectProject(project) {
     if (!this.editable) return;

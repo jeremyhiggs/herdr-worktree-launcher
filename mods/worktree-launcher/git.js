@@ -62,6 +62,13 @@ export function createGit(runner, userHome, machine = null) {
       : `Herdr cannot read project_root: ${root}. Check its permissions. For Documents, enable Documents Folder for Herdr in System Settings → Privacy & Security → Files and Folders, then Refresh.`);
     return real(root);
   }
+  async function directories(path) {
+    const root = await rootOf({ project_root: path });
+    const found = await command('/usr/bin/find', ['-L', root, '-mindepth', '1', '-maxdepth', '1', '-type', 'd', '-print0']);
+    const entries = found.split('\0').filter(clean).map(path => ({ path, label: basename(path) })).sort((a, b) => a.label.localeCompare(b.label));
+    if (root !== '/') entries.unshift({ path: parent(root), label: '.. (Parent directory)' });
+    return { path: root, entries };
+  }
   async function ignored(path, root) {
     for (let p = parent(path); inside(p, root); p = parent(p)) {
       if (await occupied(`${p}/.git`)) {
@@ -195,5 +202,5 @@ export function createGit(runner, userHome, machine = null) {
     const result = await inspect(request);
     return { ...result, error: result.error || error || (result.kind !== 'created' ? 'Git did not create the requested checkout.' : '') };
   }
-  return { machine, userHome, validateRoot: rootOf, discover, choices, destination, prepare, create, inspect, identity };
+  return { machine, userHome, validateRoot: rootOf, directories, discover, choices, destination, prepare, create, inspect, identity };
 }

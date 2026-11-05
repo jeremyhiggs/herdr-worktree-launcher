@@ -41,6 +41,9 @@ test('live remote discovery and all branch flows use only disposable repositorie
   await git('remote', 'add', 'origin', `${root}/origin.git`);
   await git('update-ref', 'refs/remotes/origin/remote-only', first);
   const api = createGit((command, args, options) => runner(command, args, { ...options, on: machine }), userHome, machine);
+  const folders = await api.directories(projects);
+  assert.equal(folders.path, projects);
+  assert.deepEqual(folders.entries.map(row => row.path), [root, repo]);
   const [project] = await api.discover({ project_root: projects });
   assert.equal(project.machine, machine); assert.equal(project.path, repo);
   for (const [action, ref, name, commit, upstream] of [

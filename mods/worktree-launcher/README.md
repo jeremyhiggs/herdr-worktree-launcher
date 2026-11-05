@@ -23,7 +23,7 @@ The installer copies the mod into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mo
 
 Existing keybindings are preserved. The installer backs up `keys.json` before adding the shortcut. If Cmd+Shift+G is already assigned, installation stops before copying files. Add `--no-shortcut` to install while keeping that binding.
 
-An existing mod directory requires `--update`. This replaces its distributable code files and preserves `config.json`, recovery records, and unrelated files. Supply `--project-root` again only to change that setting.
+An existing mod directory requires `--update`. This replaces its distributable code files and preserves project-root settings, recovery records, and unrelated files. Supply `--project-root` again only to change that setting.
 
 ```sh
 pnpm run install:mod --update
@@ -50,7 +50,7 @@ cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
   mods/worktree-launcher/README.md "$app_home/mods/worktree-launcher/"
 ```
 
-Open the launcher to configure its roots, or create `config.json` in the installed mod directory. Local and remote paths belong to their respective machines:
+Open the launcher to configure its roots, or create `<app-home>/data/worktree-launcher-config.json`. Local and remote paths belong to their respective machines:
 
 ```json
 {
@@ -61,7 +61,9 @@ Open the launcher to configure its roots, or create `config.json` in the install
 }
 ```
 
-The mod does not expand `~` or choose a fallback directory. An unset root opens the setup field. Configuration errors appear in the overlay.
+The mod does not expand `~`. Select Browse to choose a local folder or list folders on the selected remote machine. Remote browsing starts at the entered absolute path, or at the remote home when the field is empty. Select a child folder or the parent entry to navigate, then Save to use the displayed directory. The saved path stays visible and editable. Configuration errors appear in the overlay.
+
+Mutable settings live outside the watched mod folder, so saving does not reload the launcher. The installer migrates an existing `mods/worktree-launcher/config.json`, preserving all machine roots and unrelated settings. The launcher also reads that legacy file when the new settings file is absent; its next save writes the new location.
 
 Run the module check against the installed directory:
 
@@ -178,9 +180,9 @@ Local mod commands run in Herdr.app. Its folder permissions can differ from your
 
 ## Update and remove
 
-For an update, run `pnpm run install:mod --update`. The manual source-file copy also excludes `config.json` and preserves your configuration.
+For an update, run `pnpm run install:mod --update`. The manual source-file copy also preserves your configuration.
 
-Before removal, move `config.json` to a backup directory outside the mod folder.
+Root settings remain in `data/worktree-launcher-config.json` after removing the mod. Back up any legacy `mods/worktree-launcher/config.json` before deleting that folder.
 
 Then remove the installed `mods/worktree-launcher` directory and its optional keybinding. Preserve any recovery record until its operation is resolved.
 

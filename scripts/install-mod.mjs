@@ -38,9 +38,11 @@ async function install() {
   if (existing && (!existing.isDirectory() || existing.isSymbolicLink() || await realpath(target) === await realpath(source))) throw new Error(`Refusing to replace ${target}: expected a separate mod directory, not a file, symlink, or source checkout.`);
   if (existing && !values.update) throw new Error(`${target} already exists. Use --update to replace this mod's code and preserve its configuration.`);
 
-  const configPath = join(target, 'config.json');
+  const configPath = join(appHome, 'data/worktree-launcher-config.json');
   const originalConfig = await readOptional(configPath);
-  const config = originalConfig === null ? {} : object(originalConfig, configPath);
+  const legacyPath = join(target, 'config.json');
+  const sourceConfig = originalConfig ?? await readOptional(legacyPath);
+  const config = sourceConfig === null ? {} : object(sourceConfig, originalConfig === null ? legacyPath : configPath);
   const root = values['project-root'];
   if (root !== undefined) {
     if (!isAbsolute(root)) throw new Error('Supply --project-root with one absolute, readable project directory.');
@@ -65,7 +67,15 @@ async function install() {
   await execute('herdr-app', ['--version'], { timeout: 10000 });
   await mkdir(target, { recursive: true });
   for (const file of files) await copyFile(join(source, file), join(target, file));
-  if (originalConfig === null || values['project-root'] !== undefined) await writeFile(configPath, json(config));
+  if (originalConfig === null || values['project-root'] !== undefined) {
+    await mkdir(dirname(configPath), { recursive: true });
+    if (await readOptional(configPath) !== originalConfig) throw new Error('Project-root settings changed during installation. They were preserved; rerun with --update.');
+    try { await writeFile(configPath, json(config), originalConfig === null ? { flag: 'wx' } : {}); }
+    catch (error) {
+      if (error.code === 'EEXIST') throw new Error('Project-root settings changed during installation. They were preserved; rerun with --update.');
+      throw error;
+    }
+  }
   try {
     await execute('herdr-app', ['check', target], { env: { ...process.env, HERDR_APP_HOME: appHome }, timeout: 30000 });
   } catch (error) { throw new Error(`Native check failed. Mod files remain at ${target}; the shortcut was not changed.\n${error.stderr || error.message}`); }

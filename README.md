@@ -62,7 +62,7 @@ pnpm run test:app stop /path/printed/by/the/launcher
 
 The stop command closes only that test app and core. It preserves temporary files and logs for inspection.
 
-Repository discovery reads `<app-home>/mods/worktree-launcher/config.json`. The UI can create this configuration and stores roots independently:
+Repository discovery reads `<app-home>/data/worktree-launcher-config.json`. The UI can create this configuration and stores roots independently:
 
 ```json
 {

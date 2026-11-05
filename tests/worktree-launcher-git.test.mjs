@@ -50,6 +50,21 @@ test('discovery distinguishes basenames, prunes build/ignored/bare/JJ and dedupl
   await mkdir(join(f.dir, 'empty')); assert.deepEqual(await f.api.discover({ project_root: join(f.dir, 'empty') }), []);
 });
 
+test('directory browsing lists immediate folders and symlinks with literal names, plus the parent', async t => {
+  const f = await fixture(t);
+  const names = ['one', 'two words', 'literal<&>$(echo nope)'];
+  for (const name of names) await mkdir(join(f.root, name, 'nested'), { recursive: true });
+  await writeFile(join(f.root, 'file'), 'excluded');
+  await symlink(join(f.root, 'one'), join(f.root, 'linked'));
+  const result = await f.api.directories(f.root);
+  assert.equal(result.path, f.root);
+  assert.deepEqual(result.entries[0], { path: f.dir, label: '.. (Parent directory)' });
+  assert.deepEqual(result.entries.slice(1).map(row => row.label).sort(), [...names, 'linked'].sort());
+  assert(result.entries.slice(1).every(row => row.path === join(f.root, row.label)));
+  assert.equal((await f.api.directories(join(f.root, 'linked'))).path, join(f.root, 'one'));
+  await assert.rejects(f.api.directories(join(f.root, 'missing')), /project_root/);
+});
+
 test('refs keep identities, availability reasons and both remotes; bases include checked out branches', async t => {
   const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
   const refs = await f.api.choices(project);

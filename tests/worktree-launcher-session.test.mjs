@@ -53,7 +53,7 @@ test('isolated launcher configures disposable discovery, fixtures, shortcut and 
   const result = await f.run(); const root = f.remember(result.stdout);
   assert(root);
   assert.match(result.stdout, /Stop: pnpm run test:app stop /);
-  const config = JSON.parse(await readFile(join(root, 'app/mods/worktree-launcher/config.json'), 'utf8'));
+  const config = JSON.parse(await readFile(join(root, 'app/data/worktree-launcher-config.json'), 'utf8'));
   assert.equal(config.project_root, join(root, 'projects'));
   const keys = JSON.parse(await readFile(join(root, 'app/keys.json'), 'utf8'));
   assert.equal(keys.global['cmd-shift-g'], 'mod.open:worktree-launcher');

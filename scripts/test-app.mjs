@@ -54,7 +54,7 @@ async function start() {
   let launched = false;
   try {
     const mod = join(root, 'app/mods/worktree-launcher');
-    await Promise.all(['home', 'shell', 'projects', 'config', 'data', 'state', 'run', 'app/mods/worktree-launcher'].map(path => mkdir(join(root, path), { recursive: true })));
+    await Promise.all(['home', 'shell', 'projects', 'config', 'data', 'state', 'run', 'app/mods/worktree-launcher', 'app/data'].map(path => mkdir(join(root, path), { recursive: true })));
     const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
     const restore = ['HOME', 'ZDOTDIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR'].map(key => process.env[key] === undefined ? `unset ${key}` : `export ${key}=${quote(process.env[key])}`);
     const startup = join(process.env.ZDOTDIR ?? process.env.HOME, '.zshenv');
@@ -64,7 +64,7 @@ async function start() {
     await copyFile(join(mod, 'keys.json'), join(root, 'app/keys.json'));
     await writeFile(join(root, 'app/settings.json'), JSON.stringify({ core: binaries.core, telemetry: false }));
     await writeFile(join(root, 'app/shared.json'), JSON.stringify({ 'frame.welcomed': 'skipped' }));
-    await writeFile(join(mod, 'config.json'), JSON.stringify({ project_root: join(root, 'projects') }, null, 2));
+    await writeFile(join(root, 'app/data/worktree-launcher-config.json'), JSON.stringify({ project_root: join(root, 'projects') }, null, 2));
 
     await run(root, 'git', ['clone', '--quiet', '--no-hardlinks', repository, join(root, 'seed')]);
     const seed = join(root, 'seed');
@@ -89,7 +89,7 @@ async function start() {
     await run(root, binaries.app, ['do', 'mod.open', '--name', 'worktree-launcher']);
     await waitForStatus(root, binaries.app, status => status.overlays?.includes('worktree-launcher'), 'The Worktree Launcher overlay did not open within 30 seconds.');
     console.log(`Repository discovery root: ${join(root, 'projects')}`);
-    console.log(`Configuration: ${join(mod, 'config.json')}`);
+    console.log(`Configuration: ${join(root, 'app/data/worktree-launcher-config.json')}`);
     console.log('Test zsh uses your normal startup files, history and cache; Herdr state and worktrees stay temporary.');
     console.log('Try demo → New branch → base available → test/new → Cmd+Enter.');
     console.log('Existing-branch choices include local available and remote origin/remote-only.');

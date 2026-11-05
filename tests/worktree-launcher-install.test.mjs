@@ -14,12 +14,16 @@ async function fixture(t) {
   const app = join(root, 'app home'), projects = join(root, "projects ; 'literal'"), bin = join(root, 'bin');
   await Promise.all([app, projects, bin].map(path => mkdir(path)));
   await writeFile(join(bin, 'herdr-app'), `#!/usr/bin/env node
-const { appendFileSync, existsSync } = require('node:fs');
+const { appendFileSync, existsSync, mkdirSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const args = process.argv.slice(2);
 appendFileSync(process.env.WL_EVENTS, JSON.stringify(args) + '\\n');
+if (args[0] === '--version' && process.env.WL_CONFIG_DURING_VERSION) {
+  mkdirSync(join(process.env.HERDR_APP_HOME, 'data'), { recursive: true });
+  writeFileSync(join(process.env.HERDR_APP_HOME, 'data/worktree-launcher-config.json'), process.env.WL_CONFIG_DURING_VERSION);
+}
 if (args[0] === 'check') {
-  if (!existsSync(join(args[1], 'main.js')) || !existsSync(join(args[1], 'config.json'))) process.exit(2);
+  if (!existsSync(join(args[1], 'main.js')) || !existsSync(join(process.env.HERDR_APP_HOME || join(process.env.HOME, '.config/herdr-app'), 'data/worktree-launcher-config.json'))) process.exit(2);
   if (process.env.WL_FAIL_CHECK) { console.error('injected native failure'); process.exit(1); }
 }
 `, { mode: 0o755 });
@@ -36,18 +40,18 @@ test('install copies a standalone mod, merges and backs up keys, and checks with
   const recovery = join(f.app, 'data/worktree-launcher-operation.json');
   await writeFile(recovery, 'preserve recovery');
   await f.run(['--project-root', f.projects]);
-  assert.equal(JSON.parse(await readFile(join(f.target, 'config.json'))).project_root, f.projects);
+  assert.equal(JSON.parse(await readFile(join(f.app, 'data/worktree-launcher-config.json'))).project_root, f.projects);
   assert.deepEqual(JSON.parse(await readFile(f.keys)), { global: { 'cmd-k': 'app.palette', 'cmd-shift-g': 'mod.open:worktree-launcher' }, terminal: { 'alt-x': 'custom' } });
   const backup = (await readdir(f.app)).find(name => name.endsWith('.bak'));
   assert.equal(await readFile(join(f.app, backup), 'utf8'), original);
   assert.equal(await readFile(recovery, 'utf8'), 'preserve recovery');
   assert.deepEqual((await readFile(f.env.WL_EVENTS, 'utf8')).trim().split('\n').map(JSON.parse), [['--version'], ['check', f.target]]);
-  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.json', 'config.js', 'git.js', 'keys.json', 'main.js', 'mod.json', 'model.js'].sort());
+  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.js', 'git.js', 'keys.json', 'main.js', 'mod.json', 'model.js'].sort());
 });
 
 test('update is explicit, preserves config and keys byte-for-byte, and can change only the requested root', async t => {
   const f = await fixture(t); await f.run(['--project-root', f.projects]);
-  const configPath = join(f.target, 'config.json');
+  const configPath = join(f.app, 'data/worktree-launcher-config.json');
   const config = JSON.stringify({ project_root: f.projects, personal: 'keep' });
   await writeFile(configPath, config);
   const keys = await readFile(f.keys, 'utf8');
@@ -77,7 +81,7 @@ test('invalid roots, keybinding conflicts, and malformed keys fail before mod fi
 
 test('installation without a project root supports UI setup, and update preserves remote-only configuration', async t => {
   const f = await fixture(t); await f.run();
-  const configPath = join(f.target, 'config.json');
+  const configPath = join(f.app, 'data/worktree-launcher-config.json');
   assert.deepEqual(JSON.parse(await readFile(configPath)), {});
   const config = JSON.stringify({ remote_project_roots: { devbox: '/remote/projects' } });
   await writeFile(configPath, config); await f.run(['--update']);
@@ -99,8 +103,30 @@ test('default installation home follows HOME, and symlinked destinations are ref
   const f = await fixture(t);
   const env = { ...f.env }; delete env.HERDR_APP_HOME;
   await execute(process.execPath, [installer, '--project-root', f.projects], { env, timeout: 10000 });
-  assert.equal(JSON.parse(await readFile(join(env.HOME, '.config/herdr-app/mods/worktree-launcher/config.json'))).project_root, f.projects);
+  assert.equal(JSON.parse(await readFile(join(env.HOME, '.config/herdr-app/data/worktree-launcher-config.json'))).project_root, f.projects);
   await mkdir(join(f.app, 'mods'));
   await symlink(join(env.HOME, '.config/herdr-app/mods/worktree-launcher'), f.target);
   await assert.rejects(f.run(['--update', '--project-root', f.projects]), /Refusing to replace/);
+});
+
+test('update migrates legacy settings once and preserves every machine root and unrelated field', async t => {
+  const f = await fixture(t); await mkdir(f.target, { recursive: true });
+  const legacyPath = join(f.target, 'config.json');
+  const config = { project_root: f.projects, remote_project_roots: { devbox: '/remote/projects' }, personal: true };
+  const original = JSON.stringify(config); await writeFile(legacyPath, original);
+  await f.run(['--update']);
+  const nextPath = join(f.app, 'data/worktree-launcher-config.json');
+  assert.deepEqual(JSON.parse(await readFile(nextPath)), config);
+  assert.equal(await readFile(legacyPath, 'utf8'), original);
+  config.remote_project_roots.devbox = '/remote/next';
+  await writeFile(nextPath, JSON.stringify(config)); await f.run(['--update']);
+  assert.deepEqual(JSON.parse(await readFile(nextPath)), config);
+});
+
+test('migration preserves settings saved by the running UI after the installer first reads config', async t => {
+  const f = await fixture(t); await mkdir(f.target, { recursive: true });
+  await writeFile(join(f.target, 'config.json'), JSON.stringify({ project_root: '/old/projects' }));
+  const current = JSON.stringify({ project_root: '/new/projects', remote_project_roots: { devbox: '/new/remote' }, savedByUi: true });
+  await assert.rejects(f.run(['--update'], { WL_CONFIG_DURING_VERSION: current }), /settings changed during installation/);
+  assert.equal(await readFile(join(f.app, 'data/worktree-launcher-config.json'), 'utf8'), current);
 });
