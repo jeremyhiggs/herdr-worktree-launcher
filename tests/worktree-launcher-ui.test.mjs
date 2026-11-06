@@ -18,21 +18,59 @@ const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
 function keyboardView(phase = 'editing') {
   globalThis.launcherClosedOverlays = [];
-  const handlers = new Map(), bindings = [];
+  const handlers = new Map(), bindings = [], opacities = [], focus = [];
+  const nativeWindow = { active: false, activations: 0, activate_window() { this.active = true; this.activations++; }, is_window_active() { return this.active; } };
+  globalThis.window = nativeWindow;
   globalThis.launcherElement = () => {
     const element = new Proxy({}, { get: (_target, key) => (...args) => {
       if (key === 'on_key_down' || key === 'on_key_up') handlers.set(key, args[0]);
+      if (key === 'opacity') opacities.push(args[0]);
       return element;
     } });
     return element;
   };
-  const view = new Launcher(); view.task = () => {};
-  const cx = { focus_handle: () => ({}), bind_keys: rows => bindings.push(...rows), stop_propagation() {}, notify() {} };
+  const view = new Launcher(); let initialWork;
+  view.task = (_cx, work) => { initialWork = work; };
+  let focusedHandle;
+  const cx = { focus_handle: () => {
+    const handle = { focus() { focus.push('handle'); focusedHandle = handle; }, is_focused: () => focusedHandle === handle };
+    return handle;
+  }, bind_keys: rows => bindings.push(...rows), stop_propagation() {}, notify() {} };
   view.init({}, cx); view.model.phase = phase; view.render();
   assert(!bindings.some(row => row.keystroke === 'escape'), 'Do not override native Escape routing');
   assert(handlers.has('on_key_down')); assert(handlers.has('on_key_up'));
-  return { view, cx, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
+  return { view, cx, focus, nativeWindow, opacities, initialWork, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
 }
+
+test('opening focuses and activates the launcher before slow project loading, so Escape can close it', async () => {
+  const { view, focus, nativeWindow, initialWork, pressEscape } = keyboardView('loading');
+  let release;
+  view.model.refresh = () => new Promise(resolve => { release = resolve; });
+  const pending = initialWork(null, () => {});
+  assert.equal(focus.length, 1, 'The launcher handle receives focus immediately');
+  assert.equal(nativeWindow.activations, 1, 'Activate before awaiting projects');
+  pressEscape(); assert.equal(view.model.closed, true);
+  release(); await pending;
+  assert.deepEqual(globalThis.launcherClosedOverlays, ['fixture-overlay']);
+});
+
+test('inactive launcher windows dim and regain full opacity without stealing focus', () => {
+  const { view, nativeWindow, opacities } = keyboardView();
+  assert(opacities.at(-1) < 1 && opacities.at(-1) >= 0.75);
+  nativeWindow.active = true; view.render(); assert.equal(opacities.at(-1), 1);
+  nativeWindow.active = false; view.render(); assert(opacities.at(-1) < 1);
+  assert.equal(nativeWindow.activations, 0, 'Rendering must not reactivate the window');
+});
+
+test('launcher dims when a terminal has focus, while its inputs and buttons stay fully opaque', () => {
+  const { view, nativeWindow, opacities, cx } = keyboardView();
+  nativeWindow.active = true;
+  const terminal = cx.focus_handle(); terminal.focus();
+  view.render(); assert(opacities.at(-1) < 1, 'An active app does not mean the launcher has focus');
+  view.buttons.close.focus(); view.render(); assert.equal(opacities.at(-1), 1);
+  terminal.focus(); view.activeInput = 'name'; view.render(); assert.equal(opacities.at(-1), 1);
+  view.activeInput = null; view.handle.focus(); view.render(); assert.equal(opacities.at(-1), 1);
+});
 
 test('Escape release closes the launcher without installing a competing native binding', () => {
   for (const field of ['machine', 'root', 'project', 'ref', 'name', null]) {

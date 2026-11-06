@@ -13,6 +13,7 @@ function selectableText(id, text) {
 export default class WorktreeLauncher extends View {
   init(_props, cx) {
     this.handle = cx.focus_handle();
+    this.handle.focus();
     this.scroll = VirtualListScrollHandle.new();
     this.field = 'project';
     this.openField = null;
@@ -66,6 +67,7 @@ export default class WorktreeLauncher extends View {
     });
     this.showChoice('machine', this.model.machine ?? 'Local');
     this.task(cx, async (_open, changed) => {
+      window.activate_window();
       const pending = this.model.refresh(changed), generation = this.model.generation;
       await pending;
       if (this.model.closed || generation !== this.model.generation) return;
@@ -308,6 +310,7 @@ export default class WorktreeLauncher extends View {
 
   render() {
     const t = theme(), m = this.model;
+    const focused = this.activeInput !== null || this.handle.is_focused() || Object.values(this.buttons).some(handle => handle.is_focused());
     const button = (id, text, action, disabled = false, selected = false, tab = 0) => {
       disabled = disabled || !!this.savingRoot;
       return Button.new(id)
@@ -325,6 +328,7 @@ export default class WorktreeLauncher extends View {
     const picker = field => Popup.new(`worktree-${field}-picker`, div().w_full().on_click((_e, cx) => { if (this.savingRoot || !editable(field)) return; this.field = field; this.openField = field; cx.notify(); }).child(input(field)))
       .w_full().anchor('top_left').when(this.openField === field && editable(field) && !this.savingRoot, el => el.content(this.choiceList(field, t)));
     return v_flex().id('worktree-launcher').track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
+      .opacity(window.is_window_active() && focused ? 1 : 0.85)
       .on_key_up((e, cx) => this.keyUp(e, cx))
       .on_size_change((size, cx) => { if (this.width !== size.width) { this.width = size.width; cx.notify(); } })
       .on_mouse_down('left', (_e, cx) => cx.stop_propagation())
