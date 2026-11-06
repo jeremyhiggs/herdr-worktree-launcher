@@ -1,6 +1,6 @@
 import { copyFile, mkdir, mkdtemp, open, readFile, realpath, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
-import { promisify } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -8,8 +8,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 if (Number.parseInt(process.versions.node, 10) < 24) throw new Error('Node.js 24 or newer is required.');
 const repository = fileURLToPath(new URL('..', import.meta.url));
 const execute = promisify(execFile);
+const { values } = parseArgs({ options: { output: { type: 'string' } } });
 const root = await realpath(await mkdtemp('/tmp/wld-'));
-const output = resolve(repository, 'docs/screenshots');
+const output = resolve(values.output ?? join(repository, 'docs/screenshots'));
 const env = { ...process.env, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'docs', HC_SOCKET: join(root, 'run/herdr-core/docs.sock'), ZDOTDIR: join(root, 'shell'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
 for (const key of ['HC_TERMINAL_ID', 'HERDR_SPACE_ID', 'HERDR_TAB_ID', 'HERDR_PANE_ID']) delete env[key];
 const run = async (binary, args, timeout = 30000) => (await execute(binary, args, { cwd: root, env, timeout, maxBuffer: 8 * 1024 * 1024 })).stdout;
@@ -49,6 +50,8 @@ try {
     if (name === 'sample-api') await git('worktree', 'add', join(root, 'checkouts/sample-api-pagination'), 'feature/pagination');
   }
   await run(process.execPath, [join(repository, 'scripts/install-mod.mjs'), '--project-root', join(root, 'projects')]);
+  const version = (await app(['--version'])).trim().split(' ').at(-1);
+  await writeFile(join(root, 'app/update-notes.json'), JSON.stringify({ last_run: version, presented: [version] }));
   const mod = join(root, 'app/mods/worktree-launcher');
   await copyFile(join(mod, 'main.js'), join(mod, 'launcher.js'));
   await copyFile(join(repository, 'scripts/fixtures/screenshot-launcher.js'), join(mod, 'main.js'));
@@ -64,15 +67,16 @@ try {
   await delay(1000);
   await waitFor(async () => {
     const state = await status();
-    if (state.overlays?.length) await app(['do', 'overlay.close']);
+    for (const id of state.overlays ?? []) await app(['do', 'overlay.close', '--id', id]);
     return state;
   }, state => !state.overlays?.length, 'dismiss sample startup overlays');
   const spaces = JSON.parse(await app(['ls'])), terminals = JSON.parse(await run('hc', ['ls']));
   if (spaces.spaces.length || terminals.terminals.length) throw new Error('Expected an empty sample app/core.');
   await app(['do', 'mod.open', '--name', 'worktree-launcher']);
   const before = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
-  for (const [scene, filename] of [['new', 'new-branch.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['create', 'worktree-opened.png']]) {
-    if (scene === 'create') await app(['do', 'mod.open', '--name', 'worktree-launcher']);
+  let firstOpening;
+  for (const [scene, filename] of [['new', 'new-branch.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', null], ['create', 'worktree-opened.png']]) {
+    if (['reuse-again', 'create'].includes(scene)) await app(['do', 'mod.open', '--name', 'worktree-launcher']);
     await app(['do', `worktree-launcher.${scene}`]);
     const result = await waitFor(async () => {
       const value = JSON.parse(await readFile(join(root, 'app/data/screenshot-state.json'), 'utf8'));
@@ -81,12 +85,15 @@ try {
     }, value => value.scene === scene, scene);
     const state = await status(); if (state.errors.length) throw new Error(JSON.stringify(state.errors));
     await delay(800);
-    await app(['shot', filename ? join(output, filename) : join(root, 'existing-worktree-opened.png')]); await delay(300);
-    if (scene === 'reuse') {
+    const screenshot = filename ?? `${scene}-opened.png`;
+    await app(['shot', filename ? join(output, filename) : join(root, screenshot)]); await delay(300);
+    if (scene.startsWith('reuse')) {
       const after = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
       if (before !== after || result.result !== join(root, 'checkouts/sample-api-pagination')) throw new Error('Existing worktree was not reused in place.');
+      if (scene === 'reuse') firstOpening = result;
+      else if (result.space !== firstOpening.space || result.tabs !== firstOpening.tabs + 1 || result.terminal === firstOpening.terminal) throw new Error('Existing session did not receive a fresh terminal tab.');
     }
-    console.log(`${filename ?? 'existing-worktree-opened.png (sample only)'}: ${JSON.stringify(result)}`);
+    console.log(`${screenshot}${filename ? '' : ' (sample only)'}: ${JSON.stringify(result)}`);
   }
   await writeFile(join(root, 'capture.json'), JSON.stringify({ source: repository, captured: new Date().toISOString(), output }, null, 2));
   console.log(`Sample profile and logs: ${root}`);

@@ -48,6 +48,7 @@ export default class WorktreeLauncher extends View {
       machine: spaces().find(s => s.active)?.machine ?? null,
       connect: machine => connectGit(exec, home(), machine),
       listAgents: machine => knownAgents({ on: machine }),
+      terminals: () => panes().map(pane => pane.terminal).filter(Boolean),
       config: machine => config.get(machine),
       saveRoot: (machine, root) => config.set(machine, root),
       journal: {

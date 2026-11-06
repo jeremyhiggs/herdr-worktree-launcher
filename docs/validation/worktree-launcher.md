@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-05.
+Last updated: 2026-11-06.
 
 This report separates automated checks, native app observations, and remaining manual acceptance. A screenshot or module-loading check does not prove keyboard routing or agent startup.
 
@@ -8,12 +8,12 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 84 passed, 1 skipped | Git fixtures, form state, recovery, settings, installation, and test-app isolation |
+| `pnpm test` | 85 passed, 1 skipped | Git fixtures, form state, recovery, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
-| Sample creation and opening | Passed | Real creation, existing checkout reuse, grouped worktree spaces, and focused shells |
+| Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
 | README screenshots | Four inspected images | New branch, selectable existing worktrees, available programs, and the resulting worktree |
-| Remote integration | Passed separately on devbox | Four Git creation flows and opening each checkout in place through the remote Git adapter |
+| Remote Git integration | Passed separately on devbox, 2026-11-05 | Four Git creation flows and opening each checkout in place through the remote Git adapter |
 
 The current checks use Node 24.22.1, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -42,6 +42,10 @@ Existing-checkout sessions accept later commits and upstream changes on the same
 
 Moved, missing, or switched checkouts fail revalidation. A branch checked out after preparation never causes creation of a second checkout. Session-opening recovery retains the existing path and selected program.
 
+Fresh-tab tests cover Shell and Codex on local and remote adapters. Each new launch adds a tab to the detected worktree space. It ignores older matching programs and waits for the new terminal. A retry after serialization reuses that attempt's terminal.
+
+Space detection checks every tab and the space's folder, with Git identity validation. Tests include tabs that use unrelated directories.
+
 The program-selection tests cover local and remote requests. They do not start Claude Code, Pi, OpenCode, or Codex.
 
 ## Screenshot installation
@@ -54,9 +58,15 @@ The app opens the primary project first, then the worktree space with a focused 
 
 Another scene opens `feature/pagination` in a pre-existing custom checkout outside the worktree store. The worktree list stays unchanged. Its shell screenshot remains in the retained sample directory.
 
+A second opening detects the same space and adds a new tab. The native run observed one tab becoming two, with a different focused terminal. Git's worktree list stayed unchanged.
+
 The sample uses separate home, app, core-session, socket, shell, and XDG directories. Its shutdown targets only that app and core. Logs and fixtures remain in the printed temporary directory.
 
-The capture activates the sample window and dismisses its first-run overlays. `herdr-app shot` supplies the actual window images. All four images received a visual check for content and private data.
+The capture activates the sample window and skips its first-run welcome and release notes. `herdr-app shot` supplies the actual window images. All four README images received a visual check for content and private data.
+
+The fresh-tab follow-up saved its images under `/private/tmp` through `--output`. It preserved the tracked README images.
+
+Structured native observations establish the fresh-tab result. The follow-up PNGs contained a stale window frame and supply no new visual acceptance evidence.
 
 | Image | Demonstration |
 | --- | --- |

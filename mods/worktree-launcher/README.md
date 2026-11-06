@@ -50,6 +50,8 @@ The branch picker includes local and fetched remote branches. The launcher does 
 
 Checked-out branches show their paths. Select one and use **Open worktree** to open a session in its existing folder. Its files, branch, and tracking settings stay intact.
 
+The launcher detects an existing Herdr space for the worktree and adds a **new tab**. If none exists, it creates a space. Each launch starts a fresh shell or agent.
+
 Checked-out branches also remain available as bases for **New branch**.
 
 An existing remote branch creates a local branch that tracks that remote. A new branch has no upstream.

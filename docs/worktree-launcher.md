@@ -81,6 +81,12 @@ If an agent is missing from the menu, check that Herdr can detect it on the sele
 
 The launcher creates or reuses the primary project space before opening the worktree. Herdr's standard Spaces sidebar supplies grouping. The launcher needs no `spaces-grouped` mod.
 
+For an existing checkout, the launcher detects matching spaces on the selected machine through terminal folders, the space's folder, and Git identity. It checks every tab, including when another tab uses a different folder.
+
+If a matching space exists, **Open worktree** adds a new tab with a fresh shell or selected agent. Otherwise, it creates a space. It leaves older tabs running.
+
+An opening retry can focus the new tab from the same attempt. A new launcher operation starts another tab.
+
 A custom sidebar controls its own presentation. Without grouping support, the worktree remains a separate space in that sidebar.
 
 ## Troubleshooting

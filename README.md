@@ -55,6 +55,8 @@ If the branch already has a checkout, its folder appears in the picker and previ
 
 The launcher reuses the checkout without changing its files or branches. You can also use checked-out branches as bases for new branches.
 
+The launcher detects an existing Herdr space for that worktree and opens a **new tab** there. Otherwise, it creates a space. Each launch starts a fresh shell or agent.
+
 ![Existing-branch picker showing an existing worktree folder and the Open worktree action](docs/screenshots/existing-branch.png)
 
 The launcher uses the refs already on your machine. To see newer remote branches, fetch them in your repository before opening the launcher.

@@ -11,6 +11,7 @@ export async function openCheckout(request, git, app) {
   const machine = request.machine ?? null;
   const launch = request.launch?.key && request.launch.key !== 'shell' ? request.launch : null;
   const acceptsProgram = pane => launch ? pane.program?.key === launch.key : pane.program?.shell;
+  const previousTerminals = new Set(request.reuse ? request.previousTerminals ?? [] : []);
   if ((git.machine ?? null) !== machine) throw new Error('Checkout belongs to another machine.');
   const deadline = app.now() + 10000;
   let expired = false;
@@ -33,7 +34,7 @@ export async function openCheckout(request, git, app) {
       for (const space of local) {
         const tabs = new Set(space.tabs.map(t => t.id));
         const candidates = panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd);
-        const locations = selectedProgram ? candidates.filter(acceptsProgram) : candidates.length ? candidates.slice(0, 1) : space.folder ? [{ cwd: space.folder }] : [];
+        const locations = selectedProgram ? candidates.filter(pane => acceptsProgram(pane) && !previousTerminals.has(pane.terminal)) : [...candidates, ...(space.folder ? [{ cwd: space.folder }] : [])];
         for (const pane of locations) {
           check();
           let current;
@@ -85,8 +86,8 @@ export async function openCheckout(request, git, app) {
 }
 
 export class WorktreeModel {
-  constructor({ connect, config, saveRoot, journal, open, machine = null, listAgents = async () => [] }) {
-    Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents });
+  constructor({ connect, config, saveRoot, journal, open, machine = null, listAgents = async () => [], terminals = () => [] }) {
+    Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents, terminals });
     this.launches = [shellLaunch];
     this.launch = shellLaunch;
     this.git = null;
@@ -228,7 +229,10 @@ export class WorktreeModel {
       const result = await this.git.inspect(this.result.request);
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
       const request = { ...result.request, launch: this.launch };
-      if (JSON.stringify(result.request.launch ?? shellLaunch) !== JSON.stringify(this.launch)) {
+      const firstOpening = request.reuse && !Array.isArray(request.previousTerminals);
+      // Recovery must distinguish this attempt's terminal from tabs that were already running.
+      if (firstOpening) request.previousTerminals = this.terminals();
+      if (firstOpening || JSON.stringify(result.request.launch ?? shellLaunch) !== JSON.stringify(this.launch)) {
         await this.journal.save(request); this.result = { ...result, request };
       }
       await open(request);

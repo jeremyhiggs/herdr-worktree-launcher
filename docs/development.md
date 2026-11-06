@@ -70,9 +70,17 @@ The last scene creates a real sample branch and worktree through the launcher. A
 
 An additional scene opens a pre-existing checkout in its custom folder and checks that Git's worktree list stays unchanged. Its screenshot remains in the sample directory.
 
+Reopening that checkout must add a fresh terminal tab to the same space. The capture checks the space, tab count, and terminal identity.
+
+To verify the native flow without replacing README images, use a different output directory:
+
+```sh
+pnpm run screenshots --output /private/tmp/worktree-launcher-screenshots
+```
+
 Images replace the files in `docs/screenshots/`. The script stops its app and core and prints the retained sample directory for inspection.
 
-The capture activates the sample window on your desktop. It dismisses first-run overlays in that sample window before capture.
+The capture activates the sample window on your desktop. Its sample profile skips the first-run welcome and release notes.
 
 Review every image before committing. Check the form, menu contents, sidebar, terminal, and visible paths. Screenshots demonstrate rendering and programmatic integration, not physical keyboard routing.
 
