@@ -194,6 +194,25 @@ test('repository names support origin URL forms and fall back to the checkout fo
   assert.equal((await f.project(p)).basename, 'checkout-folder');
 });
 
+test('remote-less branch-folder layouts use their project container, even after switching branches', async t => {
+  const f = await fixture(t);
+  for (const folder of ['main', 'master', 'trunk']) {
+    const p = await f.repo(`privacy-gate/${folder}`);
+    for (const remote of ['origin', 'upstream']) git(p, 'remote', 'remove', remote);
+    git(p, 'branch', '-m', 'feat/privacy-gate');
+    for (const machine of [null, 'devbox']) {
+      const api = createGit(runner, f.home, machine);
+      const project = (await api.discover({ project_root: f.root })).find(project => project.path === p);
+      assert.equal(project.basename, 'privacy-gate');
+      const request = await api.prepare({ project, action: 'new', ref: 'refs/heads/base', name: 'example' });
+      assert.equal(request.path, join(f.home, '.herdr/worktrees/privacy-gate/example'));
+    }
+  }
+  const p = await f.repo('main');
+  git(p, 'remote', 'remove', 'origin');
+  assert.equal((await f.project(p)).basename, 'main', 'A repository directly under the project root keeps its own name');
+});
+
 test('refs keep identities, availability reasons and both remotes; bases include checked out branches', async t => {
   const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
   const refs = await f.api.choices(project);

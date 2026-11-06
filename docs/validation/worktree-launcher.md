@@ -8,7 +8,7 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 94 passed, 1 skipped | Git fixtures, form state, recovery, fetching, settings, installation, and test-app isolation |
+| `pnpm test` | 95 passed, 1 skipped | Git fixtures, repository naming, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |

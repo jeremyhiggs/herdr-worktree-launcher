@@ -85,8 +85,11 @@ cat "$scan"/result.* || exit $?
 printf '%s\\0' worktree-launcher-scan-complete
 `;
 
-function repositoryName(path, origin) {
-  if (origin === null) return basename(path);
+function repositoryName(path, origin, root) {
+  if (origin === null) {
+    const folder = basename(path), container = parent(path);
+    return ['main', 'master', 'trunk'].includes(folder) && inside(container, root) && container !== root ? basename(container) : folder;
+  }
   const url = (/^[a-z][a-z0-9+.-]*:\/\//i.test(origin) ? origin.split(/[?#]/, 1)[0] : origin).replace(/\/+$/, '');
   const name = (url.includes('/') ? basename(url) : url.slice(url.lastIndexOf(':') + 1)).replace(/\.git$/, '');
   if (!clean(name) || ['.', '..'].includes(name)) throw new Error('Origin has no safe repository name.');
@@ -136,7 +139,7 @@ export function createGit(runner, userHome, machine = null) {
     const [top, id] = (await command('/bin/realpath', paths)).trim().split('\n');
     return { top, id };
   }
-  async function projectIdentity(path) {
+  async function projectIdentity(path, root) {
     const { top, id } = await identity(path);
     const primary = (await worktrees(top))[0];
     if (!primary?.worktree || primary.bare) throw new Error('No primary checkout.');
@@ -145,7 +148,7 @@ export function createGit(runner, userHome, machine = null) {
     try {
       origin = (await git(primaryPath, ['config', '--get', 'remote.origin.url'])).trim();
     } catch (error) { if (error.code !== 1) throw error; }
-    return { top, id, path: primaryPath, basename: repositoryName(primaryPath, origin) };
+    return { top, id, path: primaryPath, basename: repositoryName(primaryPath, origin, root) };
   }
   async function rootOf(config) {
     const root = config?.project_root;
@@ -185,7 +188,7 @@ export function createGit(runner, userHome, machine = null) {
     for (let i = 0; i < fields.length; i += 6) {
       const [candidate, top, id, path, origin, missing] = fields.slice(i, i + 6);
       if (![candidate, top, id, path].every(clean) || !['0', '1'].includes(missing)) throw new Error('Project scan returned invalid metadata.');
-      repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim()) });
+      repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim(), root) });
     }
     const projects = new Map();
     for (const repo of repositories) {
@@ -200,7 +203,7 @@ export function createGit(runner, userHome, machine = null) {
     if (!project || !clean(project.path) || !clean(project.root)) throw new Error('Select a project.');
     if ((project.machine ?? null) !== machine) throw new Error('Project belongs to another machine; select it again.');
     const root = await rootOf({ project_root: project.root });
-    const current = await projectIdentity(project.path);
+    const current = await projectIdentity(project.path, root);
     if (root !== project.root || current.path !== project.path || current.top !== project.path || current.id !== project.id || !inside(current.path, root) || current.path === root || current.basename !== project.basename) throw new Error('Project identity changed; Refresh and select it again.');
     if (current.path.slice(root.length + 1).split('/').some(p => pruned.includes(p)) || await ignored(current.path, root)) throw new Error('Project is now excluded; Refresh.');
     return current;

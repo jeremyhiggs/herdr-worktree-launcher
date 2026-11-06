@@ -84,6 +84,8 @@ The launcher creates or reuses the primary project space, then opens the worktre
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. The repository name comes from `origin`, or the primary checkout folder when no origin exists.
 
+For a layout such as `sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. Ordinary checkouts keep their folder names.
+
 For example, branch `feature/search` in `sample-api` uses `~/.herdr/worktrees/sample-api/feature-search`. An occupied destination stops creation. Existing worktrees keep their paths.
 
 Roots live in `<app-home>/data/worktree-launcher-config.json`:

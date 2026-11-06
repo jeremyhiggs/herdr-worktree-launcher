@@ -162,7 +162,11 @@ The launcher opens the worktree in a Herdr space and reuses the primary project 
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. For example, `feature/rate-limits` becomes `sample-api/feature-rate-limits`.
 
-The repository name comes from its `origin` URL, or its primary checkout folder when no origin exists. An occupied destination stops creation.
+The repository name comes from its `origin` URL. Without an origin, it comes from the primary checkout folder.
+
+For a layout such as `sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. Ordinary checkouts keep their folder names.
+
+An occupied destination stops creation.
 
 ## Work on a remote machine
 

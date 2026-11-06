@@ -69,7 +69,9 @@ The destination is `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the s
 
 The repository name comes from the `origin` URL without `.git`. Without an origin, the primary checkout folder supplies the name.
 
-A checkout at `team/sample-api/main` with a `sample-api.git` origin therefore uses `worktrees/sample-api/<branch-slug>`.
+For a layout such as `team/sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. A checkout directly under the root keeps its own folder name.
+
+The name stays stable if you switch branches inside that primary checkout. Existing worktree folders keep their paths.
 
 The branch slug permits ASCII letters, digits, dots, underscores, and hyphens. Other character runs become a hyphen. Outer hyphens disappear.
 
