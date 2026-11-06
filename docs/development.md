@@ -64,13 +64,13 @@ pnpm run screenshots
 
 This command creates a separate app/core profile and real sample repositories. It uses a clean shell profile for screenshots. Your normal Herdr settings and projects stay separate.
 
-A sample-only driver selects fields in the real launcher. It captures the new-branch form, existing branches, available programs, and the resulting shell space.
+A sample-only driver selects fields in the real launcher. It captures the new-branch form, existing branches, fresh tabs, available programs, and the resulting shell space.
 
 The last scene creates a real sample branch and worktree through the launcher. Agent menus reflect detected programs. The script does not start an agent.
 
-An additional scene opens a pre-existing checkout in its custom folder and checks that Git's worktree list stays unchanged. Its screenshot remains in the sample directory.
+An additional scene opens a pre-existing checkout in its custom folder and checks that Git's worktree list stays unchanged. Its first screenshot remains in the sample directory.
 
-Reopening that checkout must add a fresh terminal tab to the same space. The capture checks the space, tab count, and terminal identity.
+Reopening that checkout must add a fresh terminal tab to the same space. The capture checks the space, tab count, and terminal identity. It exports this second opening as `fresh-tab.png`.
 
 To verify the native flow without replacing README images, use a different output directory:
 

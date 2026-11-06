@@ -1,10 +1,21 @@
 # Worktree Launcher
 
-Create Git worktrees without leaving Herdr. Choose a project, select a branch, and open a shell or coding agent.
+Create Git worktrees or start a fresh session in an existing checkout, without leaving Herdr.
 
-Worktree Launcher supports local projects and connected Linux or macOS machines. It keeps your primary checkout intact and opens each worktree in its own Herdr space.
+Choose a project, select a branch, and open a shell or coding agent. Your primary checkout stays intact.
 
-![Worktree Launcher ready to create feature/rate-limits from main](docs/screenshots/new-branch.png)
+## Features
+
+| Feature | What you can do |
+| --- | --- |
+| New branches | Select a local or fetched remote base and create a separate worktree. |
+| Existing branches | Create a checkout for an available branch, or use its existing worktree folder. |
+| Fresh sessions | Detect the worktree's existing Herdr space and open a new tab, or create a space. |
+| Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
+| Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
+| Native Herdr workflow | Keep worktrees grouped beneath their project, use keyboard controls, and follow Herdr's light or dark theme. |
+
+If a created worktree's session fails to open, you can retry opening it without repeating Git creation.
 
 ## Install
 
@@ -47,6 +58,10 @@ The installed mod needs no Node process or additional mod. It was checked with H
 
 You can also enter an absolute project-root path directly. The launcher saves a separate root for each machine. The root field stays visible for later changes.
 
+![New branch form showing the project, base branch, name, destination, and Shell selection](docs/screenshots/new-branch.png)
+
+*Create a separate checkout from the selected base. The destination preview shows where it will live.*
+
 ### Use an existing branch
 
 Select **Existing branch**, then choose a local or fetched remote branch. The branch-name field disappears.
@@ -55,11 +70,26 @@ If the branch already has a checkout, its folder appears in the picker and previ
 
 The launcher reuses the checkout without changing its files or branches. You can also use checked-out branches as bases for new branches.
 
-The launcher detects an existing Herdr space for that worktree and opens a **new tab** there. Otherwise, it creates a space. Each launch starts a fresh shell or agent.
-
 ![Existing-branch picker showing an existing worktree folder and the Open worktree action](docs/screenshots/existing-branch.png)
 
+*The picker shows existing checkout paths. Conflicting remote branch choices remain disabled, with an explanation.*
+
 The launcher uses the refs already on your machine. To see newer remote branches, fetch them in your repository before opening the launcher.
+
+### Start a fresh tab in an existing worktree
+
+1. Select **Existing branch** and a branch with an existing checkout.
+2. Check the **Existing worktree** folder.
+3. Choose **Shell** or an available agent under **Open with**.
+4. Select **Open worktree**, or press **Enter**.
+
+The launcher automatically detects a matching Herdr space on the selected machine. If it finds one, it opens a **new tab** there. Otherwise, it creates a space.
+
+Each launch starts a fresh shell or agent. Older tabs keep running. Retrying an interrupted opening can reuse the tab from that attempt.
+
+![The same worktree session with a new second tab selected and the original first tab still open](docs/screenshots/fresh-tab.png)
+
+*Reopening this worktree adds tab 2 to the existing session. Tab 1 keeps running in the same worktree.*
 
 ### Open a coding agent
 
@@ -69,11 +99,15 @@ The selected agent starts in the worktree with its Herdr launch settings. The pr
 
 ![Open with menu offering Shell and the agents available in this sample installation](docs/screenshots/open-with.png)
 
+*This sample installation detects OpenCode and Codex. Your menu reflects the programs available on the selected machine.*
+
 ### Find the result
 
 The launcher opens the worktree in a Herdr space and reuses the primary project space when available. Herdr's standard sidebar groups worktrees beneath their project.
 
 ![A new worktree grouped beneath sample-api with its shell open](docs/screenshots/worktree-opened.png)
+
+*A worktree appears beneath its project. Its selected tab starts in the worktree folder.*
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. For example, `feature/rate-limits` becomes `sample-api/feature-rate-limits`.
 

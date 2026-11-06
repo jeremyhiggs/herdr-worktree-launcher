@@ -12,7 +12,7 @@ This report separates automated checks, native app observations, and remaining m
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
-| README screenshots | Four inspected images | New branch, selectable existing worktrees, available programs, and the resulting worktree |
+| README screenshots | Five inspected images | New branch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
 | Remote Git integration | Passed separately on devbox, 2026-11-05 | Four Git creation flows and opening each checkout in place through the remote Git adapter |
 
 The current checks use Node 24.22.1, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
@@ -62,16 +62,15 @@ A second opening detects the same space and adds a new tab. The native run obser
 
 The sample uses separate home, app, core-session, socket, shell, and XDG directories. Its shutdown targets only that app and core. Logs and fixtures remain in the printed temporary directory.
 
-The capture activates the sample window and skips its first-run welcome and release notes. `herdr-app shot` supplies the actual window images. All four README images received a visual check for content and private data.
+The capture activates the sample window and skips its first-run welcome and release notes. `herdr-app shot` supplies the actual window images. All five README images received a visual check for content and private data.
 
-The fresh-tab follow-up saved its images under `/private/tmp` through `--output`. It preserved the tracked README images.
-
-Structured native observations establish the fresh-tab result. The follow-up PNGs contained a stale window frame and supply no new visual acceptance evidence.
+The latest capture saved its images under `/private/tmp` through `--output` for inspection. The README now uses that capture, including a visible second tab in the existing worktree session.
 
 | Image | Demonstration |
 | --- | --- |
 | [New branch](../screenshots/new-branch.png) | Machine, saved root, project, base, name, destination, and enabled Create |
 | [Existing branch](../screenshots/existing-branch.png) | Selectable existing checkouts, their paths, Open worktree, and unavailable remote-name collisions |
+| [Fresh tab](../screenshots/fresh-tab.png) | Original tab 1 and a fresh, selected tab 2 in the same detected worktree session |
 | [Open with](../screenshots/open-with.png) | Shell plus the OpenCode and Codex programs detected in the sample |
 | [Opened worktree](../screenshots/worktree-opened.png) | Grouped worktree space and its shell |
 
