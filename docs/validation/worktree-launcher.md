@@ -106,7 +106,19 @@ These figures are earlier single-run measurements. They are not latency guarante
 
 The remote count includes connection and root validation. The local measurements use a Node runner and exclude native per-call scheduling overhead.
 
-Both machines now use the same Bash scanner. Refresh scans again without a project cache. Branch selection and creation retain live validation.
+On November 6, a paired scan of a large project root returned the same 265 project records before and after the next optimization:
+
+| Scanner | Time |
+| --- | --- |
+| Serial metadata checks | 7.90 seconds |
+| Four concurrent metadata workers | 3.58 seconds |
+| Optimized scanner through the native Herdr app | 3.81 seconds |
+
+The native check used a separate app profile and the real project root. Installed-agent detection finished in 0.66 seconds. These are individual measurements, not latency guarantees.
+
+Both machines use the same Bash scanner. It limits metadata checks to four workers and skips redundant worktree lookups for ordinary checkouts. Each worker writes to a separate temporary file. The scanner removes these files after the scan and rejects failed writes instead of showing an incomplete list.
+
+Refresh scans again without a project cache. Branch selection and creation retain live validation.
 
 ## Remaining manual acceptance
 

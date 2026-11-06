@@ -78,12 +78,17 @@ test('local and remote discovery batch metadata without changing discovery rules
   git(p, 'worktree', 'add', join(f.root, 'linked'), 'free');
   await mkdir(join(f.root, 'native-jj/.jj'), { recursive: true }); git(f.root, 'init', '--bare', 'bare.git');
   for (const machine of [null, 'devbox']) {
-    const calls = [];
-    const api = createGit((command, args, options) => { calls.push(command); return runner(command, args, options); }, f.home, machine);
+    const calls = [], trace = join(f.dir, 'scan-performance.log');
+    await writeFile(trace, '');
+    const api = createGit((command, args, options) => {
+      calls.push(command);
+      return runner(command, args, { ...options, env: { ...process.env, GIT_TRACE_PERFORMANCE: trace } });
+    }, f.home, machine);
     const projects = await api.discover({ project_root: f.root });
     assert.deepEqual(projects, [p, other].map(path => ({ id: join(path, '.git'), machine, path, root: f.root, label: path.slice(f.root.length + 1), basename: 'app' })));
     assert(calls.length <= 5, `Expected one scan plus root validation, got ${calls.length} calls`);
     assert.equal(calls.filter(command => command === '/bin/bash').length, 1);
+    assert.equal((await readFile(trace, 'utf8')).split('\n').filter(line => line.includes('worktree list --porcelain -z')).length, 1, 'Only the linked checkout needs a worktree lookup');
     const nested = await api.discover({ project_root: join(f.root, "one ; 'literal'") });
     assert.equal(nested.length, 1); assert.equal(nested[0].path, p);
   }
@@ -100,6 +105,27 @@ test('remote discovery rejects failed scans instead of exposing a partial projec
     ? Promise.resolve({ code: 0, stdout: ['/candidate', '/top', '/id', '/project', 'origin', '0', ''].join('\0'), stderr: '' })
     : runner(command, args, options), f.home, 'devbox');
   await assert.rejects(truncated.discover({ project_root: f.root }), /incomplete metadata/);
+});
+
+test('discovery rejects metadata write failures instead of accepting a partial project list', async t => {
+  const f = await fixture(t), shell = join(f.dir, 'fail-first-record.sh');
+  for (let i = 0; i < 8; i++) {
+    const path = join(f.root, `project-${i}`); await mkdir(path); git(path, 'init', '-b', 'main');
+  }
+  await writeFile(shell, String.raw`
+records=0
+printf() {
+  if [[ "$#" == 7 && "$1" == '%s\0' ]]; then
+    if (( ++records == 1 )); then
+      builtin printf '%s\n' 'Simulated metadata write failure' >&2
+      return 1
+    fi
+  fi
+  builtin printf "$@"
+}
+`);
+  const api = createGit((command, args, options) => runner(command, args, { ...options, env: { ...process.env, BASH_ENV: shell } }), f.home);
+  await assert.rejects(api.discover({ project_root: f.root }), /Simulated metadata write failure/);
 });
 
 test('fetch updates only the selected remote branch refs and preserves the primary checkout on either machine', async t => {

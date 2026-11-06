@@ -31,8 +31,13 @@ ignored() {
   done
   return 1
 }
-/usr/bin/find "$root" '(' -type d '(' "$@" ')' -prune ')' -o '(' -name .git -print0 -prune ')' |
+scan=$(/usr/bin/mktemp -d "\${TMPDIR:-/tmp}/worktree-launcher.XXXXXXXX") || exit $?
+trap 'rm -rf -- "$scan"' EXIT
+/usr/bin/find "$root" '(' -type d '(' "$@" ')' -prune ')' -o '(' -name .git -print0 -prune ')' > "$scan/markers" || exit $?
+metadata() {
+local worker=$1 index=0
 while IFS= read -r -d '' marker; do
+  (( index++ % 4 == worker )) || continue
   candidate=\${marker%/*}
   [[ -n "$candidate" ]] || candidate=/
   [[ ! "$candidate" =~ [[:cntrl:]] ]] || continue
@@ -44,24 +49,39 @@ while IFS= read -r -d '' marker; do
   paths=$(/bin/realpath "\${paths%%$'\\n'*}" "\${paths#*$'\\n'}") || exit $?
   top=\${paths%%$'\\n'*}
   common=\${paths#*$'\\n'}
-  primary=$(git --no-optional-locks -C "$top" worktree list --porcelain -z | {
-    IFS= read -r -d '' first || exit 1
-    [[ "$first" == 'worktree '* ]] || exit 1
-    printf '%s' "\${first#worktree }"
-    cat >/dev/null
-  })
-  code=$?
-  case "$code" in 0) ;; 128) continue ;; *) exit "$code" ;; esac
-  primary=$(/bin/realpath "$primary") || exit $?
-  ignored "$primary"; code=$?
-  case "$code" in 0) continue ;; 1) ;; *) exit "$code" ;; esac
+  if [[ "$common" == "$top/.git" ]]; then
+    primary=$top
+  else
+    primary=$(git --no-optional-locks -C "$top" worktree list --porcelain -z | {
+      IFS= read -r -d '' first || exit 1
+      [[ "$first" == 'worktree '* ]] || exit 1
+      printf '%s' "\${first#worktree }"
+      cat >/dev/null
+    })
+    code=$?
+    case "$code" in 0) ;; 128) continue ;; *) exit "$code" ;; esac
+    primary=$(/bin/realpath "$primary") || exit $?
+  fi
+  if [[ "$primary" != "$candidate" ]]; then
+    ignored "$primary"; code=$?
+    case "$code" in 0) continue ;; 1) ;; *) exit "$code" ;; esac
+  fi
   origin=$(git --no-optional-locks -C "$primary" config --get remote.origin.url)
   code=$?
   case "$code" in 0|1) ;; *) exit "$code" ;; esac
-  printf '%s\\0' "$candidate" "$top" "$common" "$primary" "$origin" "$code"
+  printf '%s\\0' "$candidate" "$top" "$common" "$primary" "$origin" "$code" || exit $?
+done < "$scan/markers"
+}
+# Each worker owns its output file so even long NUL records cannot interleave.
+pids=()
+for worker in 0 1 2 3; do
+  metadata "$worker" > "$scan/result.$worker" &
+  pids+=("$!")
 done
-code=$?
+code=0
+for pid in "\${pids[@]}"; do wait "$pid" || code=$?; done
 (( code == 0 )) || exit "$code"
+cat "$scan"/result.* || exit $?
 printf '%s\\0' worktree-launcher-scan-complete
 `;
 
