@@ -64,9 +64,9 @@ pnpm run screenshots
 
 This command creates a separate app/core profile and real sample repositories. It uses a clean shell profile for screenshots. Your normal Herdr settings and projects stay separate.
 
-A sample-only driver selects fields in the real launcher. It captures the new-branch form, existing branches, fresh tabs, available programs, and the resulting shell space.
+A sample-only driver selects fields in the real launcher. It captures new branches, remote fetch, existing branches, fresh tabs, available programs, and the resulting shell space.
 
-A fetch scene discovers a branch that exists only in the sample bare remote. Its preview stays in the retained sample directory.
+A fetch scene discovers a branch that exists only in the sample bare remote. It exports `fetch-remote.png` for the README.
 
 The last scene creates a real sample branch and worktree through the launcher. Agent menus reflect detected programs. The script does not start an agent.
 

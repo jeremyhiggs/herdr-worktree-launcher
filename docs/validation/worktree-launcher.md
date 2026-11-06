@@ -8,14 +8,14 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 90 passed, 1 skipped | Git fixtures, form state, recovery, fetching, settings, installation, and test-app isolation |
+| `pnpm test` | 94 passed, 1 skipped | Git fixtures, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
-| README screenshots | Five inspected images | New branch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
+| README screenshots | Six inspected images | New branch, remote fetch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
 | Remote Git integration | Passed separately on devbox, 2026-11-06 | Explicit fetch, five Git creation flows, and existing-folder reuse through the remote Git adapter |
 
-The current checks use Node 24.22.1, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
+The current checks use Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
 ## Automated coverage
 
@@ -65,17 +65,18 @@ Another scene opens `feature/pagination` in a pre-existing custom checkout outsi
 
 A second opening detects the same space and adds a new tab. The native run observed one tab becoming two, with a different focused terminal. Git's worktree list stayed unchanged.
 
-The native fetch follow-up discovered `origin/feature/from-remote` from the sample bare remote. Its preview showed the remote selector, Fetch, the success message, and the newly available base. This preview remains in the sample directory. The tracked README images stay unchanged during this follow-up.
+The fetch scene discovers `origin/feature/from-remote` from the sample bare remote. The README screenshot shows the remote selector, Fetch, the success message, and the newly available base.
 
 The sample uses separate home, app, core-session, socket, shell, and XDG directories. Its shutdown targets only that app and core. Logs and fixtures remain in the printed temporary directory.
 
-The capture activates the sample window and skips its first-run welcome and release notes. `herdr-app shot` supplies the actual window images. All five README images received a visual check for content and private data.
+The capture activates the sample window and skips its first-run welcome and release notes. `herdr-app shot` supplies the actual window images. All six README images received a visual check for content and private data.
 
-The latest capture saved its images under `/private/tmp` through `--output` for inspection. The README now uses that capture, including a visible second tab in the existing worktree session.
+The latest capture saved its images through `--output` for inspection. The README uses that capture to show remote fetch and a second tab in the existing worktree session.
 
 | Image | Demonstration |
 | --- | --- |
 | [New branch](../screenshots/new-branch.png) | Machine, saved root, project, base, name, destination, and enabled Create |
+| [Remote fetch](../screenshots/fetch-remote.png) | Selected origin, successful fetch, and a branch that previously existed only on the remote |
 | [Existing branch](../screenshots/existing-branch.png) | Selectable existing checkouts, their paths, Open worktree, and unavailable remote-name collisions |
 | [Fresh tab](../screenshots/fresh-tab.png) | Original tab 1 and a fresh, selected tab 2 in the same detected worktree session |
 | [Open with](../screenshots/open-with.png) | Shell plus the OpenCode and Codex programs detected in the sample |

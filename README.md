@@ -10,7 +10,7 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 | --- | --- |
 | New branches | Select a local or fetched remote base and create a separate worktree. |
 | Existing branches | Create a checkout for an available branch, or use its existing worktree folder. |
-| Fetch on demand | Select a Git remote, such as `origin`, and refresh its branches before creating a worktree. |
+| Fetch remote branches | Fetch `origin` or another Git remote, then select new or updated branches without leaving the launcher. |
 | Fresh sessions | Detect the worktree's existing Herdr space and open a new tab, or create a space. |
 | Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
@@ -44,18 +44,49 @@ herdr-app do mod.open --name worktree-launcher
 
 The installed mod needs no Node process or additional mod. It was checked with Herdr app 0.1.13 and core 0.1.18.
 
+### Choose a different shortcut
+
+1. Open Herdr's `keys.json`, normally at `~/.config/herdr-app/keys.json`.
+2. In `global`, add an unused key combination, such as **⌘⌥G** (Command+Option+G):
+
+   ```json
+   {
+     "global": {
+       "cmd-alt-g": "mod.open:worktree-launcher"
+     }
+   }
+   ```
+
+   Merge this entry into the existing `global` object. Keep the other bindings and sections.
+
+3. If present, remove the old `"cmd-shift-g": "mod.open:worktree-launcher"` entry to replace the default shortcut.
+4. Save the file, then press your new shortcut.
+
+Herdr applies keybinding changes immediately. No restart is necessary. If you set `HERDR_APP_HOME`, edit `keys.json` in that directory instead.
+
+Key names use `cmd`, `ctrl`, `alt` (Option), and `shift`, joined with hyphens. Bindings in `terminal` or `layout:<name>` override the same combination in `global`.
+
+To install without the default shortcut, use `pnpm run install:mod --no-shortcut`. For later updates, use:
+
+```sh
+pnpm run install:mod --update --no-shortcut
+```
+
+This preserves your custom binding and prevents the installer from adding **⌘⇧G** again.
+
 ## Create your first worktree
 
-1. Press **⌘⇧G** to open **Worktree Launcher**.
+1. Press **⌘⇧G**, or your custom shortcut, to open **Worktree Launcher**.
 2. Select **Local** or a connected machine.
 3. Use **Browse…** to choose the directory that contains your projects.
 4. Select **Save**.
 5. Search for your project and select it.
-6. Select **New branch**.
-7. Select a **Base branch**.
-8. Enter a **New branch name**, such as `feature/rate-limits`.
-9. Keep **Open with** set to **Shell**, or select an available agent.
-10. Check the destination, then select **Create** or press **Enter**.
+6. Optional: [fetch remote branches](#fetch-the-latest-remote-branches) to update the available choices.
+7. Select **New branch**.
+8. Select a **Base branch**.
+9. Enter a **New branch name**, such as `feature/rate-limits`.
+10. Keep **Open with** set to **Shell**, or select an available agent.
+11. Check the destination, then select **Create** or press **Enter**.
 
 You can also enter an absolute project-root path directly. The launcher saves a separate root for each machine. The root field stays visible for later changes.
 
@@ -77,14 +108,22 @@ The launcher reuses the checkout without changing its files or branches. You can
 
 ### Fetch the latest remote branches
 
+If a branch exists on the remote but is missing from the picker, fetch that remote to load it.
+
 After you select a project, the launcher shows **Git remote** and **Fetch**. It selects `origin` by default, or the first available remote.
 
 1. Select the Git remote that you want to update.
 2. Select **Fetch**.
 3. Wait for **Fetching…** to finish.
-4. Choose a branch from the refreshed picker.
+4. Choose a branch from the refreshed **Base branch** or **Branch** picker.
 
-Fetch runs on the selected machine and leaves your checkout and uncommitted work intact. To use the latest remote base, select a remote branch such as `origin/main`.
+![Git remote set to origin, a successful fetch message, and the newly available origin/feature/from-remote branch](docs/screenshots/fetch-remote.png)
+
+*Fetch discovers `origin/feature/from-remote` in this sample repository. The branch exists only on the remote before the fetch.*
+
+Fetch runs on the selected machine and preserves your checkout and uncommitted work. It does not pull or merge changes into your current branch.
+
+To use the latest remote base, select a remote branch such as `origin/main`. If you select local `main`, the launcher uses its current local commit.
 
 The launcher fetches only when you request it. Repositories without remotes keep these controls disabled.
 
@@ -139,7 +178,7 @@ Project discovery, Git commands, worktrees, and agents all use the selected mach
 
 | Key | Action |
 | --- | --- |
-| ⌘⇧G | Open the launcher |
+| ⌘⇧G (default) | Open the launcher |
 | ↑ / ↓ | Move through an open choice list |
 | Enter | Select an open choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
@@ -157,6 +196,8 @@ From an updated copy of this repository, run:
 ```sh
 pnpm run install:mod --update
 ```
+
+If you use a custom shortcut, add `--no-shortcut` to preserve it without restoring the default binding.
 
 Updates preserve saved roots and recovery records. Installation does not restart Herdr or its core.
 

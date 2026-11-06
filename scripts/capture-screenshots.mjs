@@ -78,7 +78,7 @@ try {
   await app(['do', 'mod.open', '--name', 'worktree-launcher']);
   const before = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
   let firstOpening;
-  for (const [scene, filename] of [['new', 'new-branch.png'], ['fetch', null], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', 'fresh-tab.png'], ['create', 'worktree-opened.png']]) {
+  for (const [scene, filename] of [['new', 'new-branch.png'], ['fetch', 'fetch-remote.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', 'fresh-tab.png'], ['create', 'worktree-opened.png']]) {
     if (['reuse-again', 'create'].includes(scene)) await app(['do', 'mod.open', '--name', 'worktree-launcher']);
     await app(['do', `worktree-launcher.${scene}`]);
     const result = await waitFor(async () => {
