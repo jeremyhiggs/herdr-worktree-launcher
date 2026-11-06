@@ -102,6 +102,31 @@ test('remote discovery rejects failed scans instead of exposing a partial projec
   await assert.rejects(truncated.discover({ project_root: f.root }), /incomplete metadata/);
 });
 
+test('fetch updates only the selected remote branch refs and preserves the primary checkout on either machine', async t => {
+  const f = await fixture(t); const p = await f.repo('app');
+  await writeFile(join(p, 'tracked'), 'original'); git(p, 'add', 'tracked'); git(p, 'commit', '-m', 'tracked');
+  await writeFile(join(p, 'tracked'), 'staged'); git(p, 'add', 'tracked');
+  await writeFile(join(p, 'tracked'), 'unstaged'); await writeFile(join(p, 'untracked'), 'keep');
+  const before = [git(p, 'rev-parse', 'HEAD'), git(p, 'status', '--porcelain'), git(p, 'diff'), git(p, 'diff', '--cached')];
+  const origin = git(p, 'remote', 'get-url', 'origin'), upstream = git(p, 'remote', 'get-url', 'upstream');
+  for (const machine of [null, 'devbox']) {
+    const api = createGit(runner, f.home, machine), project = (await api.discover({ project_root: f.root }))[0];
+    const name = machine ? 'fetch-remote' : 'fetch-local';
+    git(origin, 'branch', name, 'main'); git(upstream, 'branch', `${name}-other`, 'main');
+    assert.deepEqual((await api.remotes(project)).map(row => row.name).sort(), ['origin', 'upstream']);
+    assert(!(await api.choices(project)).some(row => row.name === name));
+    const refs = await api.fetch(project, 'origin');
+    assert(refs.some(row => row.ref === `refs/remotes/origin/${name}`));
+    assert(!refs.some(row => row.ref === `refs/remotes/upstream/${name}-other`));
+    await assert.rejects(api.fetch(project, '--all'), /remote/i);
+    await assert.rejects(api.fetch({ ...project, id: 'replaced' }, 'origin'), /identity/i);
+  }
+  assert.deepEqual([git(p, 'rev-parse', 'HEAD'), git(p, 'status', '--porcelain'), git(p, 'diff'), git(p, 'diff', '--cached')], before);
+  assert.equal(await readFile(join(p, 'untracked'), 'utf8'), 'keep');
+  git(p, 'remote', 'set-url', 'upstream', join(f.dir, 'unavailable.git'));
+  await assert.rejects(f.api.fetch(await f.project(p), 'upstream'), /repository|access|exist/i);
+});
+
 test('directory browsing lists immediate folders and symlinks with literal names, plus the parent', async t => {
   const f = await fixture(t);
   const names = ['one', 'two words', 'literal<&>$(echo nope)'];

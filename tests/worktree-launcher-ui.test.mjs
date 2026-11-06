@@ -45,13 +45,30 @@ test('Escape release closes the launcher without installing a competing native b
 });
 
 test('Escape release preserves active saves and worktree operations', () => {
-  for (const phase of ['configuring', 'creating', 'opening', 'saving-root']) {
+  for (const phase of ['configuring', 'fetching', 'creating', 'opening', 'saving-root']) {
     const { view, pressEscape } = keyboardView(phase === 'saving-root' ? 'loading' : phase);
     view.savingRoot = phase === 'saving-root';
     pressEscape();
     assert.equal(view.model.closed, false);
     assert.deepEqual(globalThis.launcherClosedOverlays, []);
   }
+});
+
+test('Git remote Enter selects a remote, then the focused Fetch button fetches instead of creating', async () => {
+  const { view, cx } = keyboardView();
+  assert(view.inputs.remote, 'Project controls include a Git remote picker');
+  let fetches = 0, creates = 0, focused = false;
+  view.buttons.fetch.focus = () => { focused = true; }; view.buttons.fetch.is_focused = () => focused;
+  view.model.project = {}; view.model.ref = {}; view.model.name = 'feature';
+  view.model.remotes = [{ name: 'origin', label: 'origin' }, { name: 'upstream', label: 'upstream' }];
+  view.model.remote = view.model.remotes[0]; view.index = 1; view.openField = 'remote';
+  view.model.fetchRemote = async () => { fetches++; };
+  view.model.submit = async () => { creates++; }; const pending = [];
+  view.task = (_cx, work) => { pending.push(work(null, () => {})); };
+  view.inputs.remote.handlers.submit({ secondary: false }, cx);
+  assert.equal(view.model.remote.name, 'upstream'); assert.equal(fetches, 0);
+  view.key({ key: 'enter' }, cx); await Promise.all(pending);
+  assert.equal(fetches, 1); assert.equal(creates, 0);
 });
 
 test('Enter from a completed branch name or the form invokes Create only while enabled', async () => {
@@ -107,12 +124,12 @@ test('existing checked-out branches can be selected and opened with Enter', asyn
 
 function browseView(git) {
   const view = new Launcher(), pending = [];
-  view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true, launch: { key: 'shell', label: 'Shell' } };
+  view.model = { machine: 'devbox', git, generation: 1, phase: 'editing', editable: true, root: '/saved', rootReady: true, remotes: [], remote: null, launch: { key: 'shell', label: 'Shell' } };
   view.syncedMachine = 'devbox'; view.syncedRoot = '/saved';
   view.rootRevision = 0; view.rootDraft = false;
   view.filters = {}; view.directoryGeneration = 0;
   view.scroll = { scroll_to_item() {} };
-  view.inputs = Object.fromEntries(['root', 'project', 'machine', 'launch'].map(field => [field, {
+  view.inputs = Object.fromEntries(['root', 'project', 'machine', 'launch', 'remote'].map(field => [field, {
     text: field === 'root' ? '/saved' : '', value() { return this.text; }, set_value(value) { this.text = value; }, focus() {},
   }]));
   view.task = (_cx, work) => { pending.push(work()); };
@@ -244,7 +261,7 @@ test('a slow machine selection cannot steal focus after the user switches machin
   });
   const view = new Launcher(), focus = [], pending = [];
   view.model = model; view.filters = { machine: '', project: '', ref: '' };
-  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
+  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
   view.task = (_cx, work) => { pending.push(work()); };
   view.choose({ id: 'slow', name: 'slow', label: 'slow' }, {}, 'machine');
   await new Promise(resolve => setImmediate(resolve));
@@ -262,12 +279,12 @@ test('late branch choices cannot steal focus from a same-path project on another
   const project = machine => ({ id: '/projects/app/.git', machine, path: '/projects/app', root: '/projects', label: 'app' });
   const model = new WorktreeModel({
     machine: 'slow', config: async () => ({ project_root: '/projects' }), journal: { load: async () => null },
-    connect: async machine => ({ machine, discover: async () => [project(machine)], choices: () => machine === 'slow' ? slow : Promise.resolve([]) }),
+    connect: async machine => ({ machine, discover: async () => [project(machine)], choices: () => machine === 'slow' ? slow : Promise.resolve([]), remotes: async () => [] }),
   });
   await model.refresh();
   const view = new Launcher(), focus = [], pending = [];
   view.model = model; view.filters = { machine: '', project: '', ref: '' };
-  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
+  view.inputs = Object.fromEntries(['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch'].map(field => [field, { set_value() {}, focus() { focus.push(field); } }]));
   view.buttons = { new: { focus() { focus.push('new'); } } };
   view.task = (_cx, work) => { pending.push(work()); };
   view.choose(project('slow'), {}, 'project');

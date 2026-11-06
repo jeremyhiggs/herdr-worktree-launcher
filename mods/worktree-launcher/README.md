@@ -48,6 +48,12 @@ Each target needs Git, `/bin/bash`, `find`, `realpath`, `test`, and `mkdir`. The
 
 The branch picker includes local and fetched remote branches. The launcher does not fetch automatically.
 
+After you select a project, choose a **Git remote** and select **Fetch** to update its branches. The default is `origin`, or the first available remote. **Fetching…** appears while other controls stay disabled.
+
+The branch picker refreshes after fetching. A valid selection and your new branch name stay intact. Fetch runs on the selected machine and preserves your checkout and uncommitted work.
+
+For the latest remote base, choose a branch such as `origin/main`. Repositories without remotes keep fetch controls disabled.
+
 Checked-out branches show their paths. Select one and use **Open worktree** to open a session in its existing folder. Its files, branch, and tracking settings stay intact.
 
 The launcher detects an existing Herdr space for the worktree and adds a **new tab**. If none exists, it creates a space. Each launch starts a fresh shell or agent.
@@ -67,6 +73,7 @@ The launcher creates or reuses the primary project space, then opens the worktre
 | ↑ / ↓ | Move through an open choice list |
 | Enter | Select a choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
+| Enter on Fetch / ⌘Enter in Git remote | Fetch the selected remote |
 | ⌘Enter | Create/open directly, or save when Project root has focus |
 | Tab / Shift+Tab | Move between controls |
 | Esc | Close when no operation is in progress |

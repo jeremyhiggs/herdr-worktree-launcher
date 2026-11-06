@@ -66,6 +66,8 @@ This command creates a separate app/core profile and real sample repositories. I
 
 A sample-only driver selects fields in the real launcher. It captures the new-branch form, existing branches, fresh tabs, available programs, and the resulting shell space.
 
+A fetch scene discovers a branch that exists only in the sample bare remote. Its preview stays in the retained sample directory.
+
 The last scene creates a real sample branch and worktree through the launcher. Agent menus reflect detected programs. The script does not start an agent.
 
 An additional scene opens a pre-existing checkout in its custom folder and checks that Git's worktree list stays unchanged. Its first screenshot remains in the sample directory.

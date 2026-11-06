@@ -10,6 +10,7 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 | --- | --- |
 | New branches | Select a local or fetched remote base and create a separate worktree. |
 | Existing branches | Create a checkout for an available branch, or use its existing worktree folder. |
+| Fetch on demand | Select a Git remote, such as `origin`, and refresh its branches before creating a worktree. |
 | Fresh sessions | Detect the worktree's existing Herdr space and open a new tab, or create a space. |
 | Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
@@ -74,7 +75,18 @@ The launcher reuses the checkout without changing its files or branches. You can
 
 *The picker shows existing checkout paths. Conflicting remote branch choices remain disabled, with an explanation.*
 
-The launcher uses the refs already on your machine. To see newer remote branches, fetch them in your repository before opening the launcher.
+### Fetch the latest remote branches
+
+After you select a project, the launcher shows **Git remote** and **Fetch**. It selects `origin` by default, or the first available remote.
+
+1. Select the Git remote that you want to update.
+2. Select **Fetch**.
+3. Wait for **Fetching…** to finish.
+4. Choose a branch from the refreshed picker.
+
+Fetch runs on the selected machine and leaves your checkout and uncommitted work intact. To use the latest remote base, select a remote branch such as `origin/main`.
+
+The launcher fetches only when you request it. Repositories without remotes keep these controls disabled.
 
 ### Start a fresh tab in an existing worktree
 
@@ -131,6 +143,7 @@ Project discovery, Git commands, worktrees, and agents all use the selected mach
 | ↑ / ↓ | Move through an open choice list |
 | Enter | Select an open choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
+| Enter on Fetch / ⌘Enter in Git remote | Fetch the selected remote |
 | ⌘Enter | Create/open directly, or save when Project root has focus |
 | Tab / Shift+Tab | Move between controls |
 | Esc | Close the launcher when no operation is in progress |

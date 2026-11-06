@@ -47,6 +47,14 @@ Discovery excludes ignored repositories, bare repositories, native JJ-only works
 
 Local and fetched remote branches appear in the branch picker. Symbolic remote HEAD entries do not appear. The launcher never fetches automatically.
 
+After you select a project, choose a **Git remote** and select **Fetch**. If `origin` exists, it is the default. Otherwise, the first remote is selected.
+
+Fetch updates that remote's branch refs on the selected machine. It leaves your local branch, index, files, and existing worktrees intact. Select `origin/main` as the base to use its refreshed remote tip.
+
+While **Fetching…** appears, other controls stay disabled. The branch picker refreshes afterward and preserves its selected branch if that ref remains available. A removed ref clears the selection.
+
+Fetch uses Git's configured remote refspecs and authentication. It skips automatic tag and submodule fetching. If authentication or connectivity fails, the overlay shows Git's error and allows another attempt.
+
 For **Existing branch**, a checked-out local branch opens its existing folder with **Open worktree**. The launcher preserves its files, branch, and tracking settings.
 
 The folder can be outside the standard worktree store, including the primary checkout. Missing or invalid checkouts remain unavailable. A remote branch remains unavailable when its local branch name already exists.

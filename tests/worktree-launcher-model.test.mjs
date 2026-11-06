@@ -12,7 +12,7 @@ function setup(overrides = {}) {
   const request = { project: a, action: 'new', ref: ref.ref, name: 'feature', path: '/fixture/worktree', commit: 'abc', upstream: '' };
   const git = {
     machine: null, userHome: '/fixture-home', validateRoot: async config => config.project_root,
-    discover: async () => [a, b], choices: async () => [ref], destination: () => request.path,
+    discover: async () => [a, b], choices: async () => [ref], remotes: async () => [], destination: () => request.path,
     prepare: async () => request, create: async () => { mutations++; return { kind: 'created', path: request.path, request }; },
     inspect: async r => ({ kind: 'created', path: r.path, request: r }), ...overrides.git,
   };
@@ -20,6 +20,43 @@ function setup(overrides = {}) {
   return { model, git, request, get mutations() { return mutations; }, get opens() { return opens; }, get saved() { return saved; } };
 }
 async function fill(model) { await model.refresh(); await model.selectProject(a); model.setName('feature'); model.selectRef(ref); }
+
+test('project remotes default to origin; fetching refreshes branches and retains a still-valid selection', async () => {
+  const gate = deferred(), seen = [], refreshed = { ...ref, checkout: '/existing/main' };
+  const f = setup({ git: {
+    remotes: async () => [{ name: 'upstream', label: 'upstream' }, { name: 'origin', label: 'origin' }],
+    fetch: async (project, remote) => { seen.push([project, remote]); await gate.promise; return [refreshed, { ...ref, ref: 'refs/remotes/origin/new', name: 'new' }]; },
+  } });
+  await fill(f.model); assert.equal(f.model.remote.name, 'origin');
+  const pending = f.model.fetchRemote();
+  assert.equal(f.model.phase, 'fetching'); assert.equal(f.model.canCreate, false);
+  await f.model.fetchRemote(); await f.model.submit();
+  assert.equal(f.model.close(), false); assert.equal(f.mutations, 0);
+  gate.resolve(); await pending;
+  assert.deepEqual(seen, [[a, 'origin']]); assert.equal(f.model.phase, 'editing');
+  assert.equal(f.model.ref, refreshed); assert.equal(f.model.name, 'feature');
+  assert.equal(f.model.refs.length, 2); assert.match(f.model.fetchMessage, /origin/);
+  f.model.selectRemote(f.model.remotes[0]); assert.equal(f.model.remote.name, 'upstream');
+});
+
+test('fetch removes stale selections, reports errors, and does nothing without a configured remote', async () => {
+  const f = setup({ git: { remotes: async () => [{ name: 'upstream', label: 'upstream' }], fetch: async () => [] } });
+  await fill(f.model); assert.equal(f.model.remote.name, 'upstream');
+  await f.model.fetchRemote(); assert.equal(f.model.ref, null); assert.equal(f.model.canCreate, false);
+  f.git.fetch = async () => { throw new Error('remote authentication failed'); };
+  await f.model.fetchRemote(); assert.match(f.model.error, /authentication failed/); assert.equal(f.model.phase, 'editing');
+  assert.equal(f.model.fetchMessage, '');
+  f.git.remotes = async () => []; await f.model.selectProject(b);
+  await f.model.fetchRemote(); assert.equal(f.model.remote, null); assert.deepEqual(f.model.remotes, []);
+});
+
+test('late fetch results cannot repopulate a closed launcher', async () => {
+  const gate = deferred();
+  const f = setup({ git: { remotes: async () => [{ name: 'origin', label: 'origin' }], fetch: () => gate.promise } });
+  await fill(f.model); const pending = f.model.fetchRemote();
+  f.model.closed = true; f.model.generation++; gate.resolve([{ ...ref, name: 'late' }]); await pending;
+  assert(!f.model.refs.some(row => row.name === 'late'));
+});
 
 test('launch choices include Shell and only supported agents installed on the selected machine', async () => {
   const seen = [];

@@ -39,16 +39,21 @@ test('live remote discovery and all branch flows use only disposable repositorie
   const second = await git('rev-parse', 'HEAD');
   await git('init', '--bare', `${root}/origin.git`);
   await git('remote', 'add', 'origin', `${root}/origin.git`);
-  await git('update-ref', 'refs/remotes/origin/remote-only', first);
+  await git('push', 'origin', 'main', 'available:remote-only');
   const api = createGit((command, args, options) => runner(command, args, { ...options, on: machine }), userHome, machine);
   const folders = await api.directories(projects);
   assert.equal(folders.path, projects);
   assert.deepEqual(folders.entries.map(row => row.path), [root, repo]);
   const [project] = await api.discover({ project_root: projects });
   assert.equal(project.machine, machine); assert.equal(project.path, repo);
+  await run('git', ['--git-dir', `${root}/origin.git`, 'branch', 'fetched-from-server', 'main']);
+  assert(!(await api.choices(project)).some(ref => ref.name === 'fetched-from-server'));
+  assert.deepEqual((await api.remotes(project)).map(row => row.name), ['origin']);
+  assert((await api.fetch(project, 'origin')).some(ref => ref.ref === 'refs/remotes/origin/fetched-from-server'));
   for (const [action, ref, name, commit, upstream] of [
     ['existing', 'refs/heads/available', '', first, ''],
     ['existing', 'refs/remotes/origin/remote-only', '', first, 'refs/remotes/origin/remote-only'],
+    ['existing', 'refs/remotes/origin/fetched-from-server', '', second, 'refs/remotes/origin/fetched-from-server'],
     ['new', 'refs/heads/main', 'new-local-base', second, ''],
     ['new', 'refs/remotes/origin/remote-only', 'new-remote-base', first, ''],
   ]) {

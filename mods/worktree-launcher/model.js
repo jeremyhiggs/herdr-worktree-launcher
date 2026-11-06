@@ -99,13 +99,14 @@ export class WorktreeModel {
     this.refs = [];
     this.project = null;
     this.ref = null;
+    this.remotes = []; this.remote = null; this.fetchMessage = '';
     this.action = 'new';
     this.name = '';
     this.error = '';
     this.phase = 'loading';
     this.result = null;
   }
-  get busy() { return ['configuring', 'creating', 'opening'].includes(this.phase); }
+  get busy() { return ['configuring', 'fetching', 'creating', 'opening'].includes(this.phase); }
   get editable() { return !this.closed && ['editing', 'loading'].includes(this.phase); }
   get canCreate() { return this.phase === 'editing' && !!this.project && !!this.ref && (this.action === 'existing' ? !this.ref.reason : !!this.name); }
   get reusing() { return this.result ? !!this.result.request?.reuse : this.action === 'existing' && !!this.ref?.checkout; }
@@ -115,7 +116,7 @@ export class WorktreeModel {
     try { return this.project ? this.git.destination(this.project, this.action === 'existing' ? this.ref?.name ?? '' : this.name) : ''; }
     catch { return ''; }
   }
-  resetFields() { this.refs = []; this.ref = null; this.name = ''; this.error = ''; }
+  resetFields() { this.refs = []; this.ref = null; this.remotes = []; this.remote = null; this.fetchMessage = ''; this.name = ''; this.error = ''; }
   async refresh(changed = () => {}) {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
@@ -179,13 +180,31 @@ export class WorktreeModel {
     const generation = ++this.generation;
     this.project = project; this.resetFields(); this.phase = 'loading';
     try {
-      const refs = await this.git.choices(project);
+      const [refs, remotes] = await Promise.all([this.git.choices(project), this.git.remotes(project)]);
       if (this.closed || generation !== this.generation) return;
-      this.refs = refs; this.phase = 'editing';
+      this.refs = refs; this.remotes = remotes; this.remote = remotes.find(row => row.name === 'origin') ?? remotes[0] ?? null; this.phase = 'editing';
     } catch (e) {
       if (this.closed || generation !== this.generation) return;
       this.error = e.message; this.phase = 'editing';
     }
+  }
+  selectRemote(remote) {
+    if (this.closed || this.phase !== 'editing') return;
+    const selected = this.remotes.find(row => row.name === remote.name);
+    if (selected) { this.remote = selected; this.error = ''; this.fetchMessage = ''; }
+  }
+  async fetchRemote(changed = () => {}) {
+    if (this.closed || this.phase !== 'editing' || !this.project || !this.remote) return;
+    const generation = ++this.generation, project = this.project, remote = this.remote, selected = this.ref;
+    const current = () => !this.closed && generation === this.generation;
+    this.phase = 'fetching'; this.error = ''; this.fetchMessage = ''; changed();
+    try {
+      const refs = await this.git.fetch(project, remote.name);
+      if (!current()) return;
+      this.refs = refs; this.ref = selected ? refs.find(row => row.ref === selected.ref) ?? null : null;
+      this.error = ''; this.fetchMessage = `Fetched ${remote.label}. Branches updated.`;
+    } catch (error) { if (current()) this.error = error.message; }
+    finally { if (current()) { this.phase = 'editing'; changed(); } }
   }
   setAction(action) {
     if (!this.editable || this.action === action) return false;

@@ -47,7 +47,10 @@ try {
     await run('git', ['init', '--bare', remote]); await git('remote', 'add', 'origin', remote);
     await git('push', 'origin', 'main', 'develop');
     await git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
-    if (name === 'sample-api') await git('worktree', 'add', join(root, 'checkouts/sample-api-pagination'), 'feature/pagination');
+    if (name === 'sample-api') {
+      await git('worktree', 'add', join(root, 'checkouts/sample-api-pagination'), 'feature/pagination');
+      await run('git', ['--git-dir', remote, 'branch', 'feature/from-remote', 'main']);
+    }
   }
   await run(process.execPath, [join(repository, 'scripts/install-mod.mjs'), '--project-root', join(root, 'projects')]);
   const version = (await app(['--version'])).trim().split(' ').at(-1);
@@ -75,7 +78,7 @@ try {
   await app(['do', 'mod.open', '--name', 'worktree-launcher']);
   const before = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
   let firstOpening;
-  for (const [scene, filename] of [['new', 'new-branch.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', 'fresh-tab.png'], ['create', 'worktree-opened.png']]) {
+  for (const [scene, filename] of [['new', 'new-branch.png'], ['fetch', null], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', 'fresh-tab.png'], ['create', 'worktree-opened.png']]) {
     if (['reuse-again', 'create'].includes(scene)) await app(['do', 'mod.open', '--name', 'worktree-launcher']);
     await app(['do', `worktree-launcher.${scene}`]);
     const result = await waitFor(async () => {

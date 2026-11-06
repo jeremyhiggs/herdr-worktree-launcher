@@ -185,11 +185,22 @@ export function createGit(runner, userHome, machine = null) {
     if (current.path.slice(root.length + 1).split('/').some(p => pruned.includes(p)) || await ignored(current.path, root)) throw new Error('Project is now excluded; Refresh.');
     return current;
   }
+  async function remoteNames(path) { return (await git(path, ['remote'])).trim().split('\n').filter(Boolean); }
+  async function remotes(project) {
+    await validateProject(project);
+    return (await remoteNames(project.path)).map(name => ({ name, label: name }));
+  }
+  async function fetch(project, remote) {
+    await validateProject(project);
+    if (!(await remoteNames(project.path)).includes(remote)) throw new Error('Select a configured Git remote.');
+    await git(project.path, ['fetch', '--no-tags', '--no-recurse-submodules', '--', remote]);
+    return choices(project);
+  }
   async function choices(project) {
     await validateProject(project);
     const cwd = project.path;
     const checked = await worktrees(cwd);
-    const remotes = (await git(cwd, ['remote'])).trim().split('\n').filter(Boolean).sort((a, b) => b.length - a.length);
+    const remotes = (await remoteNames(cwd)).sort((a, b) => b.length - a.length);
     const text = await git(cwd, ['for-each-ref', '--format=%(refname)%00%(symref)%00%(upstream)', 'refs/heads', 'refs/remotes']);
     const refs = text.split('\n').filter(Boolean).map(line => {
       const [ref, symbolic, upstream] = line.split('\0');
@@ -287,5 +298,5 @@ export function createGit(runner, userHome, machine = null) {
     const result = await inspect(request);
     return { ...result, error: result.error || error || (result.kind !== 'created' ? 'Git did not create the requested checkout.' : '') };
   }
-  return { machine, userHome, validateRoot: rootOf, directories, discover, choices, destination, prepare, create, inspect, identity };
+  return { machine, userHome, validateRoot: rootOf, directories, discover, choices, remotes, fetch, destination, prepare, create, inspect, identity };
 }

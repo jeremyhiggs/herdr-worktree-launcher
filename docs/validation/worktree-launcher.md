@@ -8,12 +8,12 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 85 passed, 1 skipped | Git fixtures, form state, recovery, settings, installation, and test-app isolation |
+| `pnpm test` | 90 passed, 1 skipped | Git fixtures, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
 | README screenshots | Five inspected images | New branch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
-| Remote Git integration | Passed separately on devbox, 2026-11-05 | Four Git creation flows and opening each checkout in place through the remote Git adapter |
+| Remote Git integration | Passed separately on devbox, 2026-11-06 | Explicit fetch, five Git creation flows, and existing-folder reuse through the remote Git adapter |
 
 The current checks use Node 24.22.1, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -27,6 +27,7 @@ The tests create real Git repositories and local bare remotes. App-opening tests
 | Scan integrity | Batched local/remote scans, command-count bounds, failed commands, and truncated output |
 | Existing branches | Attached local checkout, correct remote tracking, existing-folder reuse, and local-name collisions |
 | New branches | Local or fetched remote base, no upstream, invalid names, collisions, and live ref changes |
+| Fetch | Remote selection, server-only branches, dirty-checkout preservation, stale selections, errors, and busy-state guards |
 | Filesystem safety | Literal shell characters, occupied destinations, symlink ancestors, and outside-root identity changes |
 | Checkout preservation | Dirty primary checkout, index, tracked contents, and untracked files |
 | Form state | Branch retention across actions, stale requests, machine changes, and duplicate submission |
@@ -46,6 +47,10 @@ Fresh-tab tests cover Shell and Codex on local and remote adapters. Each new lau
 
 Space detection checks every tab and the space's folder, with Git identity validation. Tests include tabs that use unrelated directories.
 
+Fetch tests use real bare remotes with branches absent from the local refs. Fetch discovers those branches only from the selected remote and preserves HEAD, index, staged changes, unstaged changes, and untracked files.
+
+Model and view tests cover the default remote, branch refresh, duplicate requests, unavailable remotes, errors, close guards, and keyboard routing. Git revalidates project identity and configured remote names before fetching.
+
 The program-selection tests cover local and remote requests. They do not start Claude Code, Pi, OpenCode, or Codex.
 
 ## Screenshot installation
@@ -59,6 +64,8 @@ The app opens the primary project first, then the worktree space with a focused 
 Another scene opens `feature/pagination` in a pre-existing custom checkout outside the worktree store. The worktree list stays unchanged. Its shell screenshot remains in the retained sample directory.
 
 A second opening detects the same space and adds a new tab. The native run observed one tab becoming two, with a different focused terminal. Git's worktree list stayed unchanged.
+
+The native fetch follow-up discovered `origin/feature/from-remote` from the sample bare remote. Its preview showed the remote selector, Fetch, the success message, and the newly available base. This preview remains in the sample directory. The tracked README images stay unchanged during this follow-up.
 
 The sample uses separate home, app, core-session, socket, shell, and XDG directories. Its shutdown targets only that app and core. Logs and fixtures remain in the printed temporary directory.
 
@@ -76,7 +83,7 @@ The latest capture saved its images under `/private/tmp` through `--output` for 
 
 No personal project, normal app settings, or live core restart forms part of this capture. The sample does not launch an agent or connect a remote machine.
 
-The separate remote test uses disposable repositories on devbox. It creates each branch flow, prepares that checkout again, and reuses the same folder. It checks attached HEAD and upstream. This test does not open a remote app session.
+The separate remote test uses disposable repositories on devbox. It fetches a server-only branch, creates each branch flow, prepares each checkout again, and reuses the same folder. It checks attached HEAD and upstream. This test does not open a remote app session.
 
 ## Earlier native observations
 
