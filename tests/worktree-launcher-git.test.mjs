@@ -213,6 +213,33 @@ test('remote-less branch-folder layouts use their project container, even after 
   assert.equal((await f.project(p)).basename, 'main', 'A repository directly under the project root keeps its own name');
 });
 
+test('remote-less manifests name selected projects and destinations on either machine without extra discovery calls', async t => {
+  const f = await fixture(t), p = await f.repo("container ; 'literal'/main"), linked = join(f.root, 'linked');
+  for (const remote of ['origin', 'upstream']) git(p, 'remote', 'remove', remote);
+  git(p, 'worktree', 'add', linked, 'free');
+  await writeFile(join(p, 'package.json'), JSON.stringify({ name: '@team/manifest-project' }));
+  await writeFile(join(p, 'pyproject.toml'), '[project]\nname = "python-project"\n');
+  await writeFile(join(linked, 'package.json'), '{"name":"different-worktree-name"}');
+  for (const machine of [null, 'devbox']) {
+    let calls = 0;
+    const api = createGit((...args) => { calls++; return runner(...args); }, f.home, machine);
+    const [project] = await api.discover({ project_root: f.root });
+    assert.equal(calls, 5); assert.equal(project.basename, 'manifest-project'); assert.equal(project.path, p);
+    const request = await api.prepare({ project, action: 'new', ref: 'refs/heads/base', name: 'example' });
+    assert.equal(request.path, join(f.home, '.herdr/worktrees/manifest-project/example'));
+  }
+  const [stale] = await f.api.discover({ project_root: f.root });
+  await writeFile(join(p, 'package.json'), '{broken');
+  await assert.rejects(f.api.choices(stale), /identity changed/);
+  assert.equal((await f.project(p)).basename, 'python-project');
+  await writeFile(join(p, 'package.json'), '{"name":"oversized","padding":"' + 'x'.repeat(65536) + '"}');
+  assert.equal((await f.project(p)).basename, 'python-project');
+  await writeFile(join(p, 'pyproject.toml'), '[project]\nname = "../invalid"\n');
+  assert.equal((await f.project(p)).basename, "container ; 'literal'");
+  git(p, 'remote', 'add', 'origin', 'https://code.example.invalid/team/remote-name.git');
+  assert.equal((await f.project(p)).basename, 'remote-name');
+});
+
 test('refs keep identities, availability reasons and both remotes; bases include checked out branches', async t => {
   const f = await fixture(t); const p = await f.repo('app'); const project = await f.project(p);
   const refs = await f.api.choices(project);

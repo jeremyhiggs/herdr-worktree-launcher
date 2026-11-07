@@ -67,11 +67,19 @@ The launcher rechecks repository identity, branch state, and destination before 
 
 The destination is `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. Its home directory supplies `~`.
 
-The repository name comes from the `origin` URL without `.git`. Without an origin, the primary checkout folder supplies the name.
+The repository name comes from the `origin` URL without `.git`. Without an origin, the launcher checks these sources in order:
+
+1. The selected project's root `package.json` name.
+2. Literal `[project].name` or `[tool.poetry].name` strings in its root `pyproject.toml`.
+3. The selected project folder.
+
+Scoped npm names use their package component: `@team/sample-api` becomes `sample-api`. Names must contain letters, digits, dots, underscores, or hyphens and start with a letter or digit.
+
+Manifest files larger than 64 KiB are ignored. Unsupported Python metadata forms fall back to folder naming. No package scripts or Python build backends run.
 
 For a layout such as `team/sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. A checkout directly under the root keeps its own folder name.
 
-The name stays stable if you switch branches inside that primary checkout. Existing worktree folders keep their paths.
+The folder fallback does not depend on the current branch name. If manifest names change, Refresh and reselect the project. Existing worktree folders keep their paths.
 
 The branch slug permits ASCII letters, digits, dots, underscores, and hyphens. Other character runs become a hyphen. Outer hyphens disappear.
 
@@ -169,7 +177,8 @@ Manual installation needs no Node or pnpm. From the repository root, copy these 
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mkdir -p "$app_home/mods/worktree-launcher"
 cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
-  mods/worktree-launcher/git.js mods/worktree-launcher/config.js \
+  mods/worktree-launcher/git.js mods/worktree-launcher/project-name.js \
+  mods/worktree-launcher/config.js \
   mods/worktree-launcher/mod.json mods/worktree-launcher/config.example.json \
   mods/worktree-launcher/keys.json mods/worktree-launcher/README.md \
   "$app_home/mods/worktree-launcher/"

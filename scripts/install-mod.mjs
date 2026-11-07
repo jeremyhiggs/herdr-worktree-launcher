@@ -8,7 +8,7 @@ import { parseArgs, promisify } from 'node:util';
 
 const source = resolve(dirname(fileURLToPath(import.meta.url)), '../mods/worktree-launcher');
 const execute = promisify(execFile);
-const files = ['main.js', 'model.js', 'git.js', 'config.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md'];
+const files = ['main.js', 'model.js', 'git.js', 'project-name.js', 'config.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md'];
 async function readOptional(path) {
   try { return await readFile(path, 'utf8'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; return null; }

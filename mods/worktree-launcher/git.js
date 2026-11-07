@@ -1,3 +1,5 @@
+import { projectFilesScript, projectFileName } from './project-name.js';
+
 const clean = value => typeof value === 'string' && value.length > 0 && !/[\x00-\x1f\x7f]/.test(value);
 const parent = path => path.slice(0, path.lastIndexOf('/')) || '/';
 const basename = path => path.slice(path.lastIndexOf('/') + 1);
@@ -11,6 +13,7 @@ set -uo pipefail
 export LC_ALL=C
 root=$1
 shift
+projectFiles() { ${projectFilesScript} }
 inside() { [[ "$1" == "$root" || "$1" == "\${root%/}/"* ]]; }
 ignored() {
   local path=$1 p=\${1%/*} code error
@@ -70,6 +73,7 @@ while IFS= read -r -d '' marker; do
   code=$?
   case "$code" in 0|1) ;; *) exit "$code" ;; esac
   printf '%s\\0' "$candidate" "$top" "$common" "$primary" "$origin" "$code" || exit $?
+  if (( code == 1 )); then projectFiles "$top" || exit $?; else printf '\\0\\0' || exit $?; fi
 done < "$scan/markers"
 }
 # Each worker owns its output file so even long NUL records cannot interleave.
@@ -85,8 +89,9 @@ cat "$scan"/result.* || exit $?
 printf '%s\\0' worktree-launcher-scan-complete
 `;
 
-function repositoryName(path, origin, root) {
+function repositoryName(path, origin, root, manifestName = null) {
   if (origin === null) {
+    if (manifestName) return manifestName;
     const folder = basename(path), container = parent(path);
     return ['main', 'master', 'trunk'].includes(folder) && inside(container, root) && container !== root ? basename(container) : folder;
   }
@@ -148,7 +153,8 @@ export function createGit(runner, userHome, machine = null) {
     try {
       origin = (await git(primaryPath, ['config', '--get', 'remote.origin.url'])).trim();
     } catch (error) { if (error.code !== 1) throw error; }
-    return { top, id, path: primaryPath, basename: repositoryName(primaryPath, origin, root) };
+    const metadata = origin === null ? (await command('/bin/bash', ['-c', projectFilesScript, 'project-files', top])).split('\0') : [];
+    return { top, id, path: primaryPath, basename: repositoryName(primaryPath, origin, root, projectFileName(...metadata)) };
   }
   async function rootOf(config) {
     const root = config?.project_root;
@@ -183,12 +189,12 @@ export function createGit(runner, userHome, machine = null) {
     const root = await rootOf(config);
     const expr = pruned.flatMap((name, i) => [...(i ? ['-o'] : []), '-name', name]);
     const fields = (await command('/bin/bash', ['-c', discoveryScript, 'worktree-launcher', root, ...expr])).split('\0');
-    if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-scan-complete' || fields.length % 6) throw new Error('Project scan returned incomplete metadata.');
+    if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-scan-complete' || fields.length % 8) throw new Error('Project scan returned incomplete metadata.');
     const repositories = [];
-    for (let i = 0; i < fields.length; i += 6) {
-      const [candidate, top, id, path, origin, missing] = fields.slice(i, i + 6);
+    for (let i = 0; i < fields.length; i += 8) {
+      const [candidate, top, id, path, origin, missing, packageHex, pythonHex] = fields.slice(i, i + 8);
       if (![candidate, top, id, path].every(clean) || !['0', '1'].includes(missing)) throw new Error('Project scan returned invalid metadata.');
-      repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim(), root) });
+      if (top === path) repositories.push({ top, id, path, basename: repositoryName(path, missing === '1' ? null : origin.trim(), root, projectFileName(packageHex, pythonHex)) });
     }
     const projects = new Map();
     for (const repo of repositories) {

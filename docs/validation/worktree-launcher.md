@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-06.
+Last updated: 2026-11-07.
 
 This report separates automated checks, native app observations, and remaining manual acceptance. A screenshot or module-loading check does not prove keyboard routing or agent startup.
 
@@ -8,12 +8,13 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 95 passed, 1 skipped | Git fixtures, repository naming, form state, recovery, fetching, settings, installation, and test-app isolation |
+| `pnpm test` | 99 passed, 1 skipped | Git fixtures, manifest and folder naming, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
 | README screenshots | Six inspected images | New branch, remote fetch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
 | Remote Git integration | Passed separately on devbox, 2026-11-06 | Explicit fetch, five Git creation flows, and existing-folder reuse through the remote Git adapter |
+| Live remote manifest naming | Passed on devbox, 2026-11-07 | Disposable repositories verify package and Python names, destination folders, fetch, and branch creation. |
 
 The current checks use Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -120,6 +121,8 @@ The native check used a separate app profile and the real project root. Installe
 Both machines use the same Bash scanner. It limits metadata checks to four workers and skips redundant worktree lookups for ordinary checkouts. Each worker writes to a separate temporary file. The scanner removes these files after the scan and rejects failed writes instead of showing an incomplete list.
 
 Refresh scans again without a project cache. Branch selection and creation retain live validation.
+
+A paired warm scan with manifest naming returned the same 265 project identities. It took 3.31 seconds before and 3.25 seconds after. Discovery still uses five app-level commands. These individual measurements show no observed loading regression in that run.
 
 ## Remaining manual acceptance
 

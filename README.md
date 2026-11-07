@@ -162,7 +162,13 @@ The launcher opens the worktree in a Herdr space and reuses the primary project 
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. For example, `feature/rate-limits` becomes `sample-api/feature-rate-limits`.
 
-The repository name comes from its `origin` URL. Without an origin, it comes from the primary checkout folder.
+The repository name comes from its `origin` URL. Without an origin, the launcher checks the selected project's root files in this order:
+
+1. `name` in [`package.json`](https://docs.npmjs.com/cli/configuring-npm/package-json/).
+2. `[project].name` in [`pyproject.toml`](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/), then `[tool.poetry].name`.
+3. The selected project folder.
+
+An npm name such as `@team/sample-api` uses `sample-api` for its destination folder. Missing or unusable names fall through to the next option.
 
 For a layout such as `sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. Ordinary checkouts keep their folder names.
 

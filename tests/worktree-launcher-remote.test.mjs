@@ -70,4 +70,17 @@ test('live remote discovery and all branch flows use only disposable repositorie
   }
   assert.equal(await git('rev-parse', 'HEAD'), second);
   assert.equal(await git('status', '--porcelain'), '');
+  await git('remote', 'remove', 'origin');
+  const write = (file, text) => run('/bin/sh', ['-c', 'printf "%s" "$2" > "$1"', 'manifest', `${repo}/${file}`, text]);
+  await write('package.json', '{"name":"@team/remote-manifest"}');
+  const [manifestProject] = await api.discover({ project_root: projects });
+  assert.equal(manifestProject.basename, 'remote-manifest');
+  const manifestRequest = await api.prepare({ project: manifestProject, action: 'new', ref: 'refs/heads/main', name: 'from-manifest' });
+  assert(manifestRequest.path.endsWith('/worktrees/remote-manifest/from-manifest'));
+  assert.equal((await api.create(manifestRequest)).kind, 'created');
+  await write('package.json', '{}');
+  await write('pyproject.toml', '[project]\nname = "remote-python"\n');
+  const [pythonProject] = await api.discover({ project_root: projects });
+  assert.equal(pythonProject.basename, 'remote-python');
+  assert((await api.choices(pythonProject)).some(ref => ref.ref === 'refs/heads/main'));
 });

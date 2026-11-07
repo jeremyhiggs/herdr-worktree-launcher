@@ -82,7 +82,9 @@ The launcher creates or reuses the primary project space, then opens the worktre
 
 ## Paths and settings
 
-Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. The repository name comes from `origin`, or the primary checkout folder when no origin exists.
+Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. The repository name comes from `origin`.
+
+Without an origin, the launcher checks the selected project's root `package.json` name, then `pyproject.toml` names under `[project]` or `[tool.poetry]`. An npm scope is removed. Missing or unusable names fall back to the selected project folder.
 
 For a layout such as `sample-api/main`, checkouts named `main`, `master`, or `trunk` use the enclosing `sample-api` folder. That folder must be inside the configured project root. Ordinary checkouts keep their folder names.
 

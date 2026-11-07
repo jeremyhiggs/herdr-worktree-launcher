@@ -93,6 +93,7 @@ Review every image before committing. Check the form, menu contents, sidebar, te
 | `mods/worktree-launcher/main.js` | Native overlay and keyboard controls |
 | `mods/worktree-launcher/model.js` | Form state, opening, and recovery |
 | `mods/worktree-launcher/git.js` | Machine routing, discovery, and Git operations |
+| `mods/worktree-launcher/project-name.js` | Bounded root manifest reads and project-name extraction |
 | `mods/worktree-launcher/config.js` | Saved project roots |
 | `scripts/install-mod.mjs` | Copy, native check, and shortcut merge |
 | `scripts/test-app.mjs` | Interactive sample app |
