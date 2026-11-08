@@ -149,15 +149,19 @@ Herdr limits each external command to 30 seconds and 8 MiB of output. For a comm
 
 Select **Open created worktree**. This action retries app opening without repeating Git creation. You can change **Open with** before the retry.
 
-Opening waits up to ten seconds for the correct checkout, selected program, and focus. A timeout preserves the Git result for recovery.
+You can also close and reopen the launcher to select another project. A completed Git operation does not block later launches. The worktree and its running tabs stay unchanged.
+
+Opening waits up to ten seconds for the correct checkout, selected program, and focus. A timeout preserves the worktree and offers an opening retry in the current window.
 
 ## Recovery after an interrupted operation
 
-The launcher records an operation before Git creation in `<app-home>/data/worktree-launcher-operation.json`. The record includes its machine and selected program.
+The launcher records an operation before Git creation in `<app-home>/data/worktree-launcher-operation.json`. The record includes its machine and selected program. The launcher clears it once Git creation is verified, before opening or selecting a session.
 
-After a reload or closure, the launcher inspects the record and Git. A complete checkout offers **Open created worktree**.
+After a reload or closure, the launcher inspects any remaining record and Git. If the checkout is complete, it clears the record and loads projects. Only an incomplete or unverified Git operation needs recovery.
 
 An incomplete operation blocks new creation across all machines. The launcher preserves the branch, checkout, and record for inspection. It never removes worktrees or branches automatically.
+
+You can select another machine and browse its projects during recovery. Creation stays blocked until you resolve the saved operation on its original machine. Connection errors report the machine's login or connection failure; reconnect, then select **Refresh**.
 
 For an incomplete operation:
 

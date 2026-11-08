@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-07.
+Last updated: 2026-11-08.
 
 This report separates automated checks, native app observations, and remaining manual acceptance. A screenshot or module-loading check does not prove keyboard routing or agent startup.
 
@@ -8,13 +8,14 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 99 passed, 1 skipped | Git fixtures, manifest and folder naming, form state, recovery, fetching, settings, installation, and test-app isolation |
+| `pnpm test` | 102 passed, 1 skipped | Git fixtures, manifest and folder naming, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
 | README screenshots | Six inspected images | New branch, remote fetch, existing worktrees, a fresh second tab, available programs, and grouped worktrees |
 | Remote Git integration | Passed separately on devbox, 2026-11-06 | Explicit fetch, five Git creation flows, and existing-folder reuse through the remote Git adapter |
 | Live remote manifest naming | Passed on devbox, 2026-11-07 | Disposable repositories verify package and Python names, destination folders, fetch, and branch creation. |
+| Opening-failure recovery | Passed in an isolated native app, 2026-11-08 | A real checkout survives an injected session-opening failure. Its journal is already clear, and refreshing loads both sample projects. |
 
 The current checks use Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -33,7 +34,7 @@ The tests create real Git repositories and local bare remotes. App-opening tests
 | Checkout preservation | Dirty primary checkout, index, tracked contents, and untracked files |
 | Form state | Branch retention across actions, stale requests, machine changes, and duplicate submission |
 | Settings | Per-machine roots, stale saves, migration, remote browsing, and save-button state |
-| Programs | Per-machine availability, configured argv, shell fallback, retry reuse, and recovery persistence |
+| Programs | Per-machine availability, configured argv, shell fallback, in-window retry reuse, and incomplete-operation recovery |
 | Recovery | Git failures, partial artifacts, opening failures, pending operations, and open-only retry |
 | Installation | File copying, native check, key conflicts, backups, explicit updates, settings preservation, and custom app homes |
 | Sample app | Isolated app/core state, temporary Git fixtures, scoped shutdown, startup failures, and shell startup behavior |
@@ -44,7 +45,7 @@ Existing-checkout sessions accept later commits and upstream changes on the same
 
 Moved, missing, or switched checkouts fail revalidation. A branch checked out after preparation never causes creation of a second checkout. Session-opening recovery retains the existing path and selected program.
 
-Fresh-tab tests cover Shell and Codex on local and remote adapters. Each new launch adds a tab to the detected worktree space. It ignores older matching programs and waits for the new terminal. A retry after serialization reuses that attempt's terminal.
+Fresh-tab tests cover Shell and Codex on local and remote adapters. Each new launch adds a tab to the detected worktree space. It ignores older matching programs and waits for the new terminal. An in-window retry reuses that attempt's terminal. Completed Git operations clear the journal before opening; a fresh launcher run loads projects.
 
 Space detection checks every tab and the space's folder, with Git identity validation. Tests include tabs that use unrelated directories.
 
@@ -60,7 +61,7 @@ The program-selection tests cover local and remote requests. They do not start C
 
 The driver uses the app's real commands to create `feature/rate-limits` from `main`. Git reports an attached branch at the expected sample destination.
 
-The app opens the primary project first, then the worktree space with a focused shell. The operation record clears after success. The captured sidebar shows the worktree beneath its project.
+The app opens the primary project first, then the worktree space with a focused shell. The operation record clears after Git creation is verified. The captured sidebar shows the worktree beneath its project.
 
 Another scene opens `feature/pagination` in a pre-existing custom checkout outside the worktree store. The worktree list stays unchanged. Its shell screenshot remains in the retained sample directory.
 

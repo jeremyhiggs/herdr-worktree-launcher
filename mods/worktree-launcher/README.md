@@ -111,7 +111,7 @@ If projects are missing, check the machine and root, then select **Refresh**. Fo
 
 If Git succeeds but app opening fails, select **Open created worktree**. This retries opening without repeating Git creation.
 
-The operation record lives in `<app-home>/data/worktree-launcher-operation.json`. After a reload, a complete checkout offers the same retry. An incomplete operation blocks new creation across machines.
+The operation record lives in `<app-home>/data/worktree-launcher-operation.json`. It is cleared once Git creation is verified, before session opening. An opening failure offers an in-window retry; the next launcher run starts fresh. An incomplete Git operation blocks new creation across machines.
 
 For an incomplete operation:
 

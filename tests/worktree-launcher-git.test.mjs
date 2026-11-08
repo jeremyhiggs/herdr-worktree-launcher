@@ -292,6 +292,7 @@ test('unsupported or disconnected remote machines do not fall back to local comm
   }, '/local', 'devbox'), /Linux or macOS/);
   assert(calls.every(([, options]) => options.on === 'devbox'));
   await assert.rejects(connectGit(async () => { throw new Error('machine unreachable'); }, '/local', 'devbox'), /unreachable/);
+  await assert.rejects(connectGit(async () => ({ code: 5, stdout: '', stderr: 'devbox needs a login; hc machine login devbox' }), '/local', 'devbox'), /hc machine login devbox/);
 });
 
 for (const [action, ref, name, expected, upstream] of [

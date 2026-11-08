@@ -82,21 +82,23 @@ test('launch choices include Shell and only supported agents installed on the se
 test('the selected agent is recorded before creation and preserved for open-only retry', async () => {
   const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['custom-codex'] }] });
   await fill(f.model); f.model.selectLaunch(f.model.launches.find(item => item.key === 'codex'));
+  const create = f.git.create;
+  f.git.create = async request => { assert.equal(f.saved.launch.key, 'codex'); return create(request); };
   let opened;
   await f.model.submit(async request => { opened = request; throw new Error('opening failed'); });
-  assert.equal(f.saved.launch.key, 'codex'); assert.deepEqual(f.saved.launch.argv, ['custom-codex']);
+  assert.equal(f.saved, null); assert.deepEqual(f.model.result.request.launch.argv, ['custom-codex']);
   assert.equal(opened.launch.key, 'codex'); assert.equal(f.model.phase, 'recover');
   await f.model.openCreated(async request => { assert.equal(request.launch.key, 'codex'); });
   assert.equal(f.model.phase, 'complete'); assert.equal(f.mutations, 1);
 });
 
-test('recovery can switch to Shell and records that choice before opening without another Git mutation', async () => {
+test('an in-window opening retry can switch to Shell without another Git mutation', async () => {
   const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['codex'] }] });
   await fill(f.model); f.model.selectLaunch(f.model.launches[1]);
   await f.model.submit(async () => { throw new Error('opening failed'); });
   f.model.selectLaunch(f.model.launches[0]);
   await f.model.openCreated(async request => {
-    assert.equal(request.launch.key, 'shell'); assert.equal(f.saved.launch.key, 'shell');
+    assert.equal(request.launch.key, 'shell'); assert.equal(f.saved, null);
   });
   assert.equal(f.mutations, 1); assert.equal(f.model.phase, 'complete');
 });
@@ -163,14 +165,13 @@ test('an existing-checkout session preserves its folder and program through open
   await f.model.submit(async request => {
     assert.equal(request.path, checkout); assert.equal(request.launch.key, 'codex');
     assert.deepEqual(request.previousTerminals, ['old-terminal']);
-    assert.deepEqual(f.saved.previousTerminals, ['old-terminal']);
+    assert.equal(f.saved, null);
     throw new Error('opening failed');
   });
-  assert.equal(f.model.phase, 'recover'); assert.equal(f.saved.reuse, true);
-  assert.deepEqual(f.saved.previousTerminals, ['old-terminal']);
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.saved, null);
+  assert.deepEqual(f.model.result.request.previousTerminals, ['old-terminal']);
   f.model.terminals = () => ['old-terminal', 'new-terminal'];
-  await f.model.refresh();
-  assert.equal(f.model.phase, 'recover'); assert.equal(f.model.reusing, true); assert.equal(f.model.path, checkout);
+  assert.equal(f.model.reusing, true); assert.equal(f.model.path, checkout);
   await f.model.openCreated(async request => { assert.equal(request.path, checkout); assert.deepEqual(request.previousTerminals, ['old-terminal']); });
   assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
 });
@@ -189,18 +190,59 @@ test('cancel before submit has no external effects', async () => {
 
 test('open failure retains created path and open-only retry never repeats Git', async () => {
   let opens = 0; const f = setup({ open: async () => { if (++opens === 1) throw new Error('Opening unconfirmed'); } });
-  await fill(f.model); await f.model.submit(); assert.equal(f.model.phase, 'recover'); assert.equal(f.saved.path, f.request.path);
+  await fill(f.model); await f.model.submit(); assert.equal(f.model.phase, 'recover'); assert.equal(f.saved, null);
   assert.match(f.model.error, /Opening unconfirmed/); await f.model.submit(); assert.equal(f.mutations, 1);
   await f.model.openCreated(); assert.equal(opens, 2); assert.equal(f.mutations, 1); assert.equal(f.saved, null);
+});
+
+test('a failed remote recovery does not override an explicit machine selection or allow another creation', async () => {
+  const f = setup();
+  const pending = { ...f.request, machine: 'devbox' };
+  f.model.journal.load = async () => pending;
+  f.model.connect = async machine => {
+    if (machine === 'devbox') throw new Error('devbox needs a login');
+    return f.git;
+  };
+  await f.model.refresh();
+  await f.model.selectMachine(null);
+  assert.equal(f.model.machine, null); assert.deepEqual(f.model.projects, [a, b]);
+  await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('another');
+  assert.equal(f.model.canCreate, false);
+  await f.model.submit(); assert.equal(f.mutations, 0);
+  await f.model.refresh(); assert.equal(f.model.machine, null);
+});
+
+test('a machine chosen during the initial journal load remains selected', async () => {
+  for (const machine of [null, 'devbox']) {
+    const gate = deferred(), f = setup({ machine });
+    f.model.journal.load = () => gate.promise;
+    const initial = f.model.refresh(), selected = f.model.selectMachine(null);
+    gate.resolve({ ...f.request, machine: 'devbox' });
+    await Promise.all([initial, selected]);
+    assert.equal(f.model.machine, null); assert.deepEqual(f.model.projects, [a, b]);
+    assert.equal(f.model.canCreate, false);
+  }
+});
+
+test('an opening failure leaves no journal and the next launcher run shows projects', async () => {
+  const f = setup({ open: async () => { assert.equal(f.saved, null); throw new Error('opening failed'); } });
+  await fill(f.model); await f.model.submit();
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.saved, null);
+  await f.model.refresh();
+  assert.equal(f.model.phase, 'editing'); assert.deepEqual(f.model.projects, [a, b]);
+  assert.equal(f.model.result, null); assert.equal(f.mutations, 1);
 });
 
 test('reopening reconciles journal before allowing mutation, including incomplete artifacts', async () => {
   for (const kind of ['created', 'partial', 'absent']) {
     const f = setup(); let mutation = 0;
-    f.model.journal.load = async () => f.request;
+    const pending = { ...f.request, project: { ...a, root: '/projects' } };
+    f.model.journal.load = async () => pending;
     f.git.inspect = async r => ({ kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' });
     f.git.create = async () => { mutation++; };
-    await f.model.refresh(); assert.equal(f.model.phase, kind === 'created' ? 'recover' : 'partial');
+    await f.model.refresh(); assert.equal(f.model.phase, kind === 'created' ? 'editing' : 'partial');
+    assert.deepEqual(f.model.projects, kind === 'created' ? [a, b] : []);
+    assert.equal(f.model.pending, kind === 'created' ? null : pending);
     await f.model.submit(); assert.equal(mutation, 0);
   }
 });
@@ -378,19 +420,19 @@ test('open-only retry refuses a checkout that changed after its first inspection
   f.model.git.inspect = async request => ({ kind: 'partial', path: request.path, request, error: 'checkout changed' });
   await f.model.openCreated(); await f.model.submit();
   assert.equal(f.model.phase, 'partial'); assert.equal(opens, 0); assert.equal(f.mutations, 1);
-  assert.equal(f.saved.path, f.request.path);
+  assert.equal(f.saved, null); assert.equal(f.model.result.path, f.request.path);
 });
 
-test('journal-clear failure preserves open-only recovery after a successful opening', async () => {
+test('journal-clear failure preserves recovery and prevents app opening', async () => {
   const f = setup(); await fill(f.model);
   const save = f.model.journal.save;
   f.model.journal.save = async request => { if (request === null) throw new Error('cannot clear journal'); await save(request); };
   await f.model.submit();
-  assert.equal(f.model.phase, 'recover'); assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
+  assert.equal(f.model.phase, 'recover'); assert.equal(f.opens, 0); assert.equal(f.mutations, 1);
   assert.equal(f.saved.path, f.request.path);
   f.model.journal.save = save; await f.model.openCreated();
   assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
-  assert.equal(f.opens, 2); assert.equal(f.mutations, 1);
+  assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
 });
 
 test('failure without any artifact clears the journal and waits for an explicit retry', async () => {
@@ -436,15 +478,18 @@ test('an unset root can be validated and saved on the selected machine without G
   assert.deepEqual(validated, ['relative', '/remote-home/fixture/projects']);
 });
 
-test('recovery pins its saved machine and cannot silently switch to local creation', async () => {
+test('incomplete recovery stays on its saved machine when browsing other machines', async () => {
   const connected = [], f = setup({ machine: null });
   const request = { ...f.request, machine: 'devbox', project: { ...a, machine: 'devbox', root: '/remote/projects' } };
-  f.model.connect = async machine => { connected.push(machine); return { ...f.git, machine }; };
+  f.model.connect = async machine => { connected.push(machine); return { ...f.git, machine, inspect: async request => ({ kind: 'partial', request, path: request.path }) }; };
   f.model.journal.load = async () => request;
   await f.model.refresh();
   assert.equal(f.model.machine, 'devbox'); assert.deepEqual(connected, ['devbox']);
-  assert.equal(f.model.phase, 'recover'); assert.equal(await f.model.selectMachine(null), false);
-  await f.model.openCreated(); assert.equal(f.opens, 1); assert.equal(f.mutations, 0);
+  assert.equal(f.model.phase, 'partial'); assert.equal(await f.model.selectMachine(null), true);
+  await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('local');
+  await f.model.submit(); assert.equal(f.mutations, 0); assert.equal(f.model.canCreate, false);
+  await f.model.selectMachine('devbox'); assert.equal(f.model.phase, 'partial');
+  await f.model.openCreated(); assert.equal(f.opens, 0); assert.equal(f.mutations, 0);
 });
 
 test('remote space matching ignores identical local paths and uses namespaced remote IDs', async () => {

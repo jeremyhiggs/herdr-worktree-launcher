@@ -105,10 +105,13 @@ export class WorktreeModel {
     this.error = '';
     this.phase = 'loading';
     this.result = null;
+    this.pending = null;
+    this.journalLoaded = false;
   }
   get busy() { return ['configuring', 'fetching', 'creating', 'opening'].includes(this.phase); }
   get editable() { return !this.closed && ['editing', 'loading'].includes(this.phase); }
-  get canCreate() { return this.phase === 'editing' && !!this.project && !!this.ref && (this.action === 'existing' ? !this.ref.reason : !!this.name); }
+  get canSelectMachine() { return !this.closed && !this.busy; }
+  get canCreate() { return !this.pending && this.phase === 'editing' && !!this.project && !!this.ref && (this.action === 'existing' ? !this.ref.reason : !!this.name); }
   get reusing() { return this.result ? !!this.result.request?.reuse : this.action === 'existing' && !!this.ref?.checkout; }
   get path() {
     if (this.result) return this.result.path;
@@ -126,8 +129,11 @@ export class WorktreeModel {
     try {
       const pending = await this.journal.load();
       if (this.closed || generation !== this.generation) return;
-      if (pending) this.machine = pending.machine ?? null;
-      const config = pending ? { project_root: pending.project.root } : await this.config(this.machine);
+      if (pending && !this.journalLoaded) this.machine = pending.machine ?? null;
+      this.journalLoaded = true;
+      this.pending = pending;
+      const recovering = pending && (pending.machine ?? null) === this.machine;
+      const config = recovering ? { project_root: pending.project.root } : await this.config(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.root = config.project_root ?? '';
       changed();
@@ -135,18 +141,25 @@ export class WorktreeModel {
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
-      const [contents, programs] = await Promise.all([pending ? git.inspect(pending) : this.root ? git.discover(config) : [], programsTask]);
+      let [contents, programs] = await Promise.all([recovering ? git.inspect(pending) : this.root ? git.discover(config) : [], programsTask]);
       if (this.closed || generation !== this.generation) return;
       this.launches = launchChoices(programs);
-      this.launch = this.launches.find(item => item.key === (pending ? pending.launch?.key ?? 'shell' : previousLaunch)) ?? shellLaunch;
+      this.launch = this.launches.find(item => item.key === (recovering ? pending.launch?.key ?? 'shell' : previousLaunch)) ?? shellLaunch;
       changed();
-      if (pending) {
+      if (recovering) {
         const result = contents;
-        this.result = result;
-        this.rootReady = !!this.root;
-        this.phase = result.kind === 'created' ? 'recover' : 'partial';
-        this.error = result.error || (result.kind === 'created' ? pending.reuse ? 'A previous operation targeted this existing checkout. Open it without changing Git.' : 'A previous operation created this checkout. Open it without running creation again.' : 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.');
-        return;
+        if (result.kind !== 'created') {
+          this.result = result;
+          this.rootReady = !!this.root;
+          this.phase = 'partial';
+          this.error = result.error || 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.';
+          return;
+        }
+        await this.journal.save(null);
+        this.pending = null;
+        if (this.closed || generation !== this.generation) return;
+        contents = this.root ? await git.discover(config) : [];
+        if (this.closed || generation !== this.generation) return;
       }
       this.projects = contents; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
     } catch (e) {
@@ -155,7 +168,9 @@ export class WorktreeModel {
     }
   }
   async selectMachine(machine, changed) {
-    if (!this.editable || this.machine === machine) return false;
+    if (!this.canSelectMachine) return false;
+    this.journalLoaded = true;
+    if (this.machine === machine) return false;
     this.launch = shellLaunch; this.launches = [shellLaunch];
     this.machine = machine; this.root = '';
     await this.refresh(changed);
@@ -230,11 +245,12 @@ export class WorktreeModel {
       const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name, checkout: this.action === 'existing' ? this.ref.checkout : null });
       request.launch = this.launch;
       await this.journal.save(request);
+      this.pending = request;
       saved = true;
       this.result = await this.git.create(request);
       if (this.result.kind === 'created') { await this.openCreated(open); return; }
       this.error = this.result.error;
-      if (this.result.kind === 'absent') { await this.journal.save(null); this.result = null; this.phase = 'editing'; }
+      if (this.result.kind === 'absent') { await this.journal.save(null); this.pending = null; this.result = null; this.phase = 'editing'; }
       else this.phase = 'partial';
     } catch (e) {
       this.error = e.message;
@@ -247,15 +263,13 @@ export class WorktreeModel {
     try {
       const result = await this.git.inspect(this.result.request);
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
+      if (this.pending) { await this.journal.save(null); this.pending = null; }
       const request = { ...result.request, launch: this.launch };
       const firstOpening = request.reuse && !Array.isArray(request.previousTerminals);
-      // Recovery must distinguish this attempt's terminal from tabs that were already running.
+      // An in-window retry must distinguish this attempt's terminal from older tabs.
       if (firstOpening) request.previousTerminals = this.terminals();
-      if (firstOpening || JSON.stringify(result.request.launch ?? shellLaunch) !== JSON.stringify(this.launch)) {
-        await this.journal.save(request); this.result = { ...result, request };
-      }
+      this.result = { ...result, request };
       await open(request);
-      await this.journal.save(null);
       this.phase = 'complete';
     } catch (e) { this.error = e.message; this.phase = 'recover'; }
   }

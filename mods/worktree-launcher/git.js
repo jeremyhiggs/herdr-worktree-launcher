@@ -108,7 +108,8 @@ export async function connectGit(exec, localHome, machine = null) {
     const [system, result] = await Promise.all([
       runner('/usr/bin/uname', ['-s']), runner('/usr/bin/printenv', ['HOME']),
     ]);
-    if (system.code !== 0 || !['Linux', 'Darwin'].includes(system.stdout.trim())) throw new Error('Remote worktrees require a connected Linux or macOS machine.');
+    if (system.code !== 0) throw new Error(`Cannot connect to ${machine}: ${(system.stderr || system.stdout || 'Machine unavailable. Reconnect and Refresh.').trim()}`);
+    if (!['Linux', 'Darwin'].includes(system.stdout.trim())) throw new Error('Remote worktrees require a connected Linux or macOS machine.');
     userHome = result.stdout.trim();
     if (result.code !== 0 || !userHome.startsWith('/') || /[\r\n]/.test(userHome)) throw new Error(`Cannot determine the home directory on ${machine}.`);
   }

@@ -196,7 +196,7 @@ export default class WorktreeLauncher extends View {
   }
 
   choose(row, cx, field = this.field) {
-    if (!row || (!this.model.editable && !(field === 'launch' && this.model.phase === 'recover')) || this.savingRoot) return;
+    if (!row || (!this.model.editable && !(field === 'launch' && this.model.phase === 'recover') && !(field === 'machine' && this.model.canSelectMachine)) || this.savingRoot) return;
     if (field === 'launch' && !['editing', 'recover'].includes(this.model.phase)) return;
     if (field === 'directory') this.browseRoot(cx, row.path);
     else if (field === 'remote') {
@@ -320,7 +320,7 @@ export default class WorktreeLauncher extends View {
       .on_click(action).child(text);
     };
     const label = text => div().text_size(11).text_color(t.muted).child(text);
-    const editable = field => field === 'launch' ? !m.closed && ['editing', 'recover'].includes(m.phase) : m.editable;
+    const editable = field => field === 'machine' ? m.canSelectMachine : field === 'launch' ? !m.closed && ['editing', 'recover'].includes(m.phase) : m.editable;
     const input = field => Input.new(this.inputs[field]).disabled(this.savingRoot || !editable(field) || field === 'root' && !m.git || field === 'remote' && (m.phase !== 'editing' || !m.remotes.length) || field === 'ref' && !m.project || field === 'name' && !m.ref)
       .accessibility_label(field === 'ref' ? m.action === 'new' ? 'Base branch' : 'Existing branch' : field === 'launch' ? 'Open with' : field === 'remote' ? 'Git remote' : field === 'name' ? 'New branch name' : field === 'root' ? 'Project root' : field === 'machine' ? 'Machine' : 'Project')
       .h(34).px(10).rounded(6).border_1().border_color(this.activeInput === field ? t.accent : t.border)
@@ -370,6 +370,7 @@ export default class WorktreeLauncher extends View {
       .child(picker('launch'))
       .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().child(selectableText('operation-error', m.error).text_color(t.blocked))))
       .when(m.phase === 'partial', el => el.child(selectableText('recovery-instructions', 'Creation is blocked until this operation is inspected. See recovery instructions in the README.').text_size(11).text_color(t.muted)))
+      .when(Boolean(m.pending) && m.phase === 'editing', el => el.child(selectableText('pending-operation', `An operation on ${m.pending.machine ?? 'Local'} needs recovery. Select that machine to resolve it before creating another worktree.`).text_size(11).text_color(t.muted)))
       .child(h_flex().gap(8).justify_end()
         .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 6))
         .when(m.phase === 'recover', el => el.child(button('open-created', m.reusing ? 'Open worktree' : 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))
