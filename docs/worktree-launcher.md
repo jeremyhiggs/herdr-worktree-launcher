@@ -153,11 +153,15 @@ You can also close and reopen the launcher to select another project. A complete
 
 Opening waits up to ten seconds for the correct checkout, selected program, and focus. A timeout preserves the worktree and offers an opening retry in the current window.
 
+Folder checks run in a batch and are reused within that opening attempt. The selected pane's Git checkout is checked again before focus changes.
+
 ## Recovery after an interrupted operation
 
 The launcher records an operation before Git creation in `<app-home>/data/worktree-launcher-operation.json`. The record includes its machine and selected program. The launcher clears it once Git creation is verified, before opening or selecting a session.
 
-After a reload or closure, the launcher inspects any remaining record and Git. If the checkout is complete, it clears the record and loads projects. Only an incomplete or unverified Git operation needs recovery.
+After a reload or closure, the launcher inspects any remaining record and Git. A complete checkout or an operation with no created artifacts clears the record and loads projects. Later commits, upstream changes, and project-name changes do not make an otherwise valid checkout incomplete. Its Git repository, checkout path, and selected branch must still match.
+
+An older Git command can finish after closure. New requests recheck branches and destinations, and each attempt has a unique record ID. An older attempt cannot clear a newer recovery record.
 
 An incomplete operation blocks new creation across all machines. The launcher preserves the branch, checkout, and record for inspection. It never removes worktrees or branches automatically.
 

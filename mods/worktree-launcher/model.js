@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 const shellLaunch = { key: 'shell', label: 'Shell', argv: null };
 const agentKeys = ['claude', 'pi', 'opencode', 'codex'];
 function launchChoices(programs) {
@@ -26,22 +28,29 @@ export async function openCheckout(request, git, app) {
     const target = await git.identity(request.path);
     check();
     if (target.id !== request.project.id) throw new Error('Checkout identity changed; inspect Git.');
+    // Cache only within this attempt; the chosen pane is checked live before focus.
+    const identities = new Map([[request.project.path, project], [request.path, target]]);
     async function match(identity, selectedProgram) {
       const { spaces, panes } = app.snapshot();
       const local = spaces.filter(s => (s.machine ?? null) === machine);
       // Check the likely space first, then verify its live checkout like every other candidate.
       local.sort((a, b) => Number(b.folder === identity.top) - Number(a.folder === identity.top));
-      for (const space of local) {
+      const rows = local.map(space => {
         const tabs = new Set(space.tabs.map(t => t.id));
         const candidates = panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd);
         const locations = selectedProgram ? candidates.filter(pane => acceptsProgram(pane) && !previousTerminals.has(pane.terminal)) : [...candidates, ...(space.folder ? [{ cwd: space.folder }] : [])];
-        for (const pane of locations) {
+        return { space, locations };
+      });
+      const missing = [...new Set(rows.flatMap(row => row.locations.map(pane => pane.cwd)))].filter(path => !identities.has(path));
+      for (const { space, locations } of rows) for (const pane of locations) {
+        if (!identities.has(pane.cwd)) {
           check();
-          let current;
-          try { current = await git.identity(pane.cwd); } catch { check(); continue; }
+          const found = await git.identities(missing);
           check();
-          if (current.id === identity.id && current.top === identity.top) return { space, pane };
+          for (const path of missing) identities.set(path, found.get(path) ?? null);
         }
+        const current = identities.get(pane.cwd);
+        if (current?.id === identity.id && current.top === identity.top) return { space, pane };
       }
       return null;
     }
@@ -69,6 +78,9 @@ export async function openCheckout(request, git, app) {
       if (found) {
         const { space, pane } = found;
         if (selected !== pane.pane) {
+          const current = await git.identity(pane.cwd);
+          check();
+          if (current.id !== target.id || current.top !== target.top) throw new Error('Checkout identity changed before focus; retry opening.');
           send('space.select', { id: space.id });
           send('tab.select', { id: pane.tab });
           send('pane.focus', { pane: pane.pane });
@@ -141,14 +153,14 @@ export class WorktreeModel {
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
-      let [contents, programs] = await Promise.all([recovering ? git.inspect(pending) : this.root ? git.discover(config) : [], programsTask]);
+      let [contents, programs] = await Promise.all([recovering ? git.inspect(pending, { recover: true }) : this.root ? git.discover(config) : [], programsTask]);
       if (this.closed || generation !== this.generation) return;
       this.launches = launchChoices(programs);
       this.launch = this.launches.find(item => item.key === (recovering ? pending.launch?.key ?? 'shell' : previousLaunch)) ?? shellLaunch;
       changed();
       if (recovering) {
         const result = contents;
-        if (result.kind !== 'created') {
+        if (!['created', 'absent'].includes(result.kind)) {
           this.result = result;
           this.rootReady = !!this.root;
           this.phase = 'partial';
@@ -244,6 +256,7 @@ export class WorktreeModel {
     try {
       const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name, checkout: this.action === 'existing' ? this.ref.checkout : null });
       request.launch = this.launch;
+      request.attempt = randomUUID();
       await this.journal.save(request);
       this.pending = request;
       saved = true;
@@ -261,7 +274,7 @@ export class WorktreeModel {
     if (this.closed || !this.result || this.result.kind !== 'created' || this.phase === 'opening') return;
     this.phase = 'opening'; this.error = '';
     try {
-      const result = await this.git.inspect(this.result.request);
+      const result = await this.git.inspect(this.result.request, { recover: true });
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
       if (this.pending) { await this.journal.save(null); this.pending = null; }
       const request = { ...result.request, launch: this.launch };

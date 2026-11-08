@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WorktreeModel, openCheckout } from '../mods/worktree-launcher/model.js';
+import { WorktreeModel, openCheckout as openCheckoutWithGit } from '../mods/worktree-launcher/model.js';
+
+// Opening fixtures model the batched adapter; real command batching is covered by Git tests.
+const openCheckout = (request, git, app) => openCheckoutWithGit(request, {
+  identities: async paths => {
+    const result = new Map();
+    await Promise.all(paths.map(async path => { try { result.set(path, await git.identity(path)); } catch {} }));
+    return result;
+  },
+  ...git,
+}, app);
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const noTimeout = () => ({ promise: new Promise(() => {}), cancel: () => {} });
@@ -238,13 +248,69 @@ test('reopening reconciles journal before allowing mutation, including incomplet
     const f = setup(); let mutation = 0;
     const pending = { ...f.request, project: { ...a, root: '/projects' } };
     f.model.journal.load = async () => pending;
-    f.git.inspect = async r => ({ kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' });
+    f.git.inspect = async (r, options) => { assert.deepEqual(options, { recover: true }); return { kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' }; };
     f.git.create = async () => { mutation++; };
-    await f.model.refresh(); assert.equal(f.model.phase, kind === 'created' ? 'editing' : 'partial');
-    assert.deepEqual(f.model.projects, kind === 'created' ? [a, b] : []);
-    assert.equal(f.model.pending, kind === 'created' ? null : pending);
+    await f.model.refresh(); assert.equal(f.model.phase, kind === 'partial' ? 'partial' : 'editing');
+    assert.deepEqual(f.model.projects, kind === 'partial' ? [] : [a, b]);
+    assert.equal(f.model.pending, kind === 'partial' ? pending : null);
     await f.model.submit(); assert.equal(mutation, 0);
   }
+});
+
+test('opening among unrelated remote spaces batches identities once and reaches the target within its deadline', async () => {
+  let now = 0, batches = 0; const calls = [];
+  const spaces = [{ id: 'project', machine: 'devbox', folder: '/project', tabs: [{ id: 'project' }] },
+    ...Array.from({ length: 60 }, (_, i) => ({ id: `s${i}`, machine: 'devbox', folder: `/other/${i}`, tabs: [{ id: `s${i}` }] }))];
+  const state = { spaces, panes: spaces.map(s => ({ pane: s.id, tab: s.id, terminal: s.id, cwd: s.folder, program: { shell: true } })) };
+  const identity = path => ({ id: ['/project', '/worktree'].includes(path) ? 'A' : 'other', top: path });
+  await openCheckout({ machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } }, {
+    machine: 'devbox', identity: async path => { now += 250; return identity(path); },
+    identities: async paths => { now += 250; batches++; return new Map(paths.map(path => [path, identity(path)])); },
+  }, {
+    snapshot: () => state, now: () => now, timeout: noTimeout, pause: async () => { now += 250; },
+    run: (command, args) => {
+      calls.push([command, args]);
+      if (command === 'space.new') {
+        state.spaces.push({ id: 'target', machine: 'devbox', folder: args.folder, tabs: [{ id: 'target' }] });
+        state.panes.push({ pane: 'target', tab: 'target', terminal: 'target', cwd: args.folder, program: { shell: true } });
+      }
+      if (command === 'space.select') state.spaces.forEach(space => { space.active = space.id === args.id; });
+      if (command === 'pane.focus') state.panes.forEach(pane => { pane.focused = pane.pane === args.pane; });
+    },
+  });
+  assert.equal(batches, 1); assert(now < 2000);
+  assert.equal(state.panes.find(pane => pane.focused).cwd, '/worktree');
+  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/worktree', machine: 'devbox' }]]);
+});
+
+test('cached checkout matches are verified live before any focus command', async () => {
+  const calls = [], request = { path: '/worktree', project: { id: 'A', path: '/project' } };
+  let targetChecks = 0;
+  await assert.rejects(openCheckout(request, {
+    identity: async path => ({ top: path, id: path === '/worktree' && ++targetChecks > 1 ? 'different-repository' : 'A' }),
+  }, {
+    snapshot: () => ({ spaces: ['/project', '/worktree'].map(path => ({ id: path, folder: path, tabs: [{ id: path }] })),
+      panes: ['/project', '/worktree'].map(path => ({ pane: path, tab: path, terminal: path, cwd: path, program: { shell: true } })) }),
+    now: () => 0, timeout: noTimeout, pause: async () => {}, run: (...args) => calls.push(args),
+  }), /identity changed before focus/);
+  assert.deepEqual(calls, []);
+});
+
+test('a known matching pane skips unrelated identity scans', async () => {
+  const state = {
+    spaces: ['/project', '/worktree', '/unrelated'].map(path => ({ id: path, folder: path, tabs: [{ id: path }] })),
+    panes: ['/project', '/worktree', '/unrelated'].map(path => ({ pane: path, tab: path, terminal: path, cwd: path, program: { shell: true } })),
+  };
+  await openCheckout({ path: '/worktree', project: { id: 'A', path: '/project' } }, {
+    identity: async path => ({ id: 'A', top: path }), identities: async () => { throw new Error('Unrelated scan should be skipped'); },
+  }, {
+    snapshot: () => state, now: () => 0, timeout: noTimeout, pause: async () => {},
+    run: (command, args) => {
+      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
+      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
+    },
+  });
+  assert.equal(state.panes.find(pane => pane.focused).cwd, '/worktree');
 });
 
 test('invalid config, failed preparation and journal failure block creation', async () => {

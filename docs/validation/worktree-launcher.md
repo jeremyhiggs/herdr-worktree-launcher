@@ -8,7 +8,7 @@ This report separates automated checks, native app observations, and remaining m
 
 | Check | Result | What it establishes |
 | --- | --- | --- |
-| `pnpm test` | 102 passed, 1 skipped | Git fixtures, manifest and folder naming, form state, recovery, fetching, settings, installation, and test-app isolation |
+| `pnpm test` | 109 passed, 1 skipped | Git fixtures, manifest and folder naming, form state, recovery, fetching, settings, installation, and test-app isolation |
 | Native module checks | Passed | Production mod and sample driver load in Herdr app 0.1.13 |
 | Fresh sample installation | Passed | Installer copies the mod, checks loading, and merges its shortcut in an isolated app home |
 | Sample creation and opening | Passed | Real creation, existing checkout reuse, fresh tabs in the detected space, and focused shells |
@@ -16,6 +16,7 @@ This report separates automated checks, native app observations, and remaining m
 | Remote Git integration | Passed separately on devbox, 2026-11-06 | Explicit fetch, five Git creation flows, and existing-folder reuse through the remote Git adapter |
 | Live remote manifest naming | Passed on devbox, 2026-11-07 | Disposable repositories verify package and Python names, destination folders, fetch, and branch creation. |
 | Opening-failure recovery | Passed in an isolated native app, 2026-11-08 | A real checkout survives an injected session-opening failure. Its journal is already clear, and refreshing loads both sample projects. |
+| Batched opening and recovery | Passed in an isolated native app, 2026-11-08 | Real creation and focused shell opening took about two seconds with 60 unrelated folder entries and one identity batch. No-artifact recovery loaded projects; an incomplete destination retained its record. |
 
 The current checks use Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and the installed core 0.1.18 binary.
 
@@ -48,6 +49,12 @@ Moved, missing, or switched checkouts fail revalidation. A branch checked out af
 Fresh-tab tests cover Shell and Codex on local and remote adapters. Each new launch adds a tab to the detected worktree space. It ignores older matching programs and waits for the new terminal. An in-window retry reuses that attempt's terminal. Completed Git operations clear the journal before opening; a fresh launcher run loads projects.
 
 Space detection checks every tab and the space's folder, with Git identity validation. Tests include tabs that use unrelated directories.
+
+Opening reuses identity results only within its ten-second attempt and checks the chosen pane again before focus changes. Tests cover literal paths, symlink aliases, nested repositories, truncated batches, and a changed repository before focus.
+
+Recovery accepts later commits, upstream changes, and manifest-name changes while retaining repository, checkout, and branch checks. Initial Git creation still verifies its expected commit and upstream.
+
+Overlapping real-Git fixtures pause two attempts before creation, including identical branch requests. An older attempt cannot clear the newer record or steal focus. Recovery clears records with no artifacts; incomplete artifacts still block creation.
 
 Fetch tests use real bare remotes with branches absent from the local refs. Fetch discovers those branches only from the selected remote and preserves HEAD, index, staged changes, unstaged changes, and untracked files.
 

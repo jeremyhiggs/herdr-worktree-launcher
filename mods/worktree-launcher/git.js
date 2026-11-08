@@ -145,6 +145,23 @@ export function createGit(runner, userHome, machine = null) {
     const [top, id] = (await command('/bin/realpath', paths)).trim().split('\n');
     return { top, id };
   }
+  async function identities(paths) {
+    const unique = [...new Set(paths.filter(clean))];
+    if (!unique.length) return new Map();
+    const fields = (await command('/bin/bash', ['-c', `
+set -uo pipefail
+for path; do
+  paths=$(git --no-optional-locks -C "$path" rev-parse --path-format=absolute --show-toplevel --git-common-dir 2>/dev/null) || continue
+  paths=$(/bin/realpath "\${paths%%$'\\n'*}" "\${paths#*$'\\n'}" 2>/dev/null) || continue
+  printf '%s\\0' "$path" "\${paths%%$'\\n'*}" "\${paths#*$'\\n'}" || exit $?
+done
+printf '%s\\0' worktree-launcher-identities-complete
+`, 'checkout-identities', ...unique])).split('\0');
+    if (fields.pop() !== '' || fields.pop() !== 'worktree-launcher-identities-complete' || fields.length % 3 || !fields.every(clean)) throw new Error('Checkout scan returned incomplete metadata.');
+    const result = new Map();
+    for (let i = 0; i < fields.length; i += 3) result.set(fields[i], { top: fields[i + 1], id: fields[i + 2] });
+    return result;
+  }
   async function projectIdentity(path, root) {
     const { top, id } = await identity(path);
     const primary = (await worktrees(top))[0];
@@ -285,17 +302,20 @@ export function createGit(runner, userHome, machine = null) {
     }
     return request;
   }
-  async function inspect(request) {
+  async function inspect(request, { recover = false } = {}) {
     try {
       if ((request.machine ?? null) !== machine || (request.project.machine ?? null) !== machine) throw new Error('Operation belongs to another machine.');
       const { project, path, name, commit, upstream } = request;
-      if (request.reuse) await validateProject(project);
+      if (recover) {
+        const current = await identity(project.path);
+        if (current.id !== project.id || current.top !== project.path) throw new Error('Project checkout identity changed; inspect Git.');
+      } else if (request.reuse) await validateProject(project);
       const rows = await worktrees(project.path);
       const row = rows.find(w => w.worktree === path);
-      if (row && !row.prunable && row.branch === `refs/heads/${name}` && (request.reuse || row.HEAD === commit)) {
+      if (row && !row.prunable && row.branch === `refs/heads/${name}` && (recover || request.reuse || row.HEAD === commit)) {
         const actual = await identity(path);
         if (actual.id === project.id && actual.top === await real(path)
-          && (request.reuse || (await git(path, ['for-each-ref', '--format=%(upstream)', `refs/heads/${name}`])).trim() === upstream)) return { kind: 'created', path, request };
+          && (recover || request.reuse || (await git(path, ['for-each-ref', '--format=%(upstream)', `refs/heads/${name}`])).trim() === upstream)) return { kind: 'created', path, request };
       }
       if (request.reuse) return { kind: 'partial', path, request, error: `Existing worktree is unavailable or changed at ${path}. Inspect Git before opening.` };
       const branch = (await git(project.path, ['for-each-ref', '--format=%(refname)', `refs/heads/${name}`])).trim().split('\n').includes(`refs/heads/${name}`);
@@ -328,5 +348,5 @@ export function createGit(runner, userHome, machine = null) {
     const result = await inspect(request);
     return { ...result, error: result.error || error || (result.kind !== 'created' ? 'Git did not create the requested checkout.' : '') };
   }
-  return { machine, userHome, validateRoot: rootOf, directories, discover, choices, remotes, fetch, destination, prepare, create, inspect, identity };
+  return { machine, userHome, validateRoot: rootOf, directories, discover, choices, remotes, fetch, destination, prepare, create, inspect, identity, identities };
 }

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createGit, connectGit } from '../mods/worktree-launcher/git.js';
+import { WorktreeModel } from '../mods/worktree-launcher/model.js';
 
 const execute = promisify(execFile);
 const runner = async (command, args, options) => {
@@ -48,6 +49,84 @@ test('discovery distinguishes basenames, prunes build/ignored/bare/JJ and dedupl
   assert.deepEqual(await f.api.identity(join(f.root, 'linked')), { top: join(f.root, 'linked'), id: join(a, '.git') });
   for (const config of [null, {}, { project_root: '.' }, { project_root: join(f.root, 'missing') }]) await assert.rejects(f.api.discover(config), /project_root/);
   await mkdir(join(f.dir, 'empty')); assert.deepEqual(await f.api.discover({ project_root: join(f.dir, 'empty') }), []);
+});
+
+test('opening identities are read in one batch with literal paths, aliases, nested repos and invalid folders', async t => {
+  const f = await fixture(t), p = await f.repo("app ; 'literal'");
+  const nested = await f.repo("app ; 'literal'/nested");
+  const sub = join(p, 'sub'); await mkdir(sub);
+  const alias = join(f.dir, 'alias'); await symlink(p, alias);
+  const linked = join(f.dir, 'linked'); git(p, 'worktree', 'add', linked, 'free');
+  let calls = 0;
+  const api = createGit((...args) => { calls++; return runner(...args); }, f.home);
+  const result = await api.identities([p, sub, alias, nested, linked, f.home, join(f.dir, 'missing'), 'invalid\npath', p]);
+  assert.equal(calls, 1);
+  for (const path of [p, sub, alias]) assert.deepEqual(result.get(path), { top: p, id: join(p, '.git') });
+  assert.deepEqual(result.get(nested), { top: nested, id: join(nested, '.git') });
+  assert.deepEqual(result.get(linked), { top: linked, id: join(p, '.git') });
+  assert(!result.has(f.home)); assert(!result.has(join(f.dir, 'missing')));
+  const truncated = createGit(async () => ({ code: 0, stdout: `${p}\0${p}\0`, stderr: '' }), f.home);
+  await assert.rejects(truncated.identities([p]), /incomplete metadata/);
+});
+
+test('recovery accepts normal checkout progress and naming changes while creation verification remains strict', async t => {
+  const f = await fixture(t), p = await f.repo('app');
+  for (const remote of ['origin', 'upstream']) git(p, 'remote', 'remove', remote);
+  await writeFile(join(p, 'package.json'), '{"name":"before"}');
+  const project = await f.project(p);
+  const request = await f.api.prepare({ project, action: 'new', ref: 'refs/heads/main', name: 'feature' });
+  assert.equal((await f.api.create(request)).kind, 'created');
+  git(request.path, 'commit', '--allow-empty', '-m', 'progress');
+  git(request.path, 'branch', '--set-upstream-to=main');
+  await writeFile(join(request.path, 'dirty.txt'), 'preserve this');
+  assert.equal((await f.api.inspect(request)).kind, 'partial');
+  assert.equal((await f.api.inspect(request, { recover: true })).kind, 'created');
+  assert.equal(await readFile(join(request.path, 'dirty.txt'), 'utf8'), 'preserve this');
+  const reused = await f.api.prepare({ project, action: 'existing', ref: 'refs/heads/main', checkout: p });
+  await writeFile(join(p, 'package.json'), '{"name":"after"}');
+  assert.equal((await f.api.inspect(reused, { recover: true })).kind, 'created');
+  git(request.path, 'checkout', 'base');
+  assert.equal((await f.api.inspect(request, { recover: true })).kind, 'partial');
+  assert.equal((await f.api.inspect({ ...reused, project: { ...project, id: 'wrong-repository' } }, { recover: true })).kind, 'partial');
+});
+
+for (const secondName of ['second', 'first']) test(`an older Git command cannot clear a newer ${secondName === 'first' ? 'identical' : 'different'} operation record`, async t => {
+  const f = await fixture(t), p = await f.repo('app'), project = await f.project(p);
+  const gate = () => { let resolve; return { promise: new Promise(r => { resolve = r; }), resolve }; };
+  const paused = { first: gate(), second: gate() }, resume = { first: gate(), second: gate() };
+  let dispatch = 0;
+  const api = createGit(async (command, args, options) => {
+    if (command === 'git' && args.includes('worktree') && args.includes('add')) {
+      const name = ['first', 'second'][dispatch++];
+      paused[name].resolve(); await resume[name].promise;
+    }
+    return runner(command, args, options);
+  }, f.home);
+  let record = null; const opened = [];
+  function model(label) {
+    let snapshot;
+    return new WorktreeModel({ connect: async () => api, config: async () => ({ project_root: f.root }), open: async () => { opened.push(label); },
+      journal: {
+        load: async () => { snapshot = record; return record ? JSON.parse(record) : null; },
+        save: async request => { assert.equal(record, snapshot, 'Recovery record changed'); record = JSON.stringify(request); snapshot = record; },
+      },
+    });
+  }
+  async function select(m, name) { await m.selectProject(project); m.selectRef(m.refs.find(r => r.ref === 'refs/heads/main')); m.setName(name); }
+  const first = model('first'); await first.refresh(); await select(first, 'first');
+  const runningFirst = first.submit(); let runningSecond;
+  try {
+    await paused.first.promise;
+    const second = model('second'); await second.refresh();
+    assert.equal(second.phase, 'editing'); assert.equal(record, 'null');
+    await select(second, secondName); runningSecond = second.submit(); await paused.second.promise;
+    resume.first.resolve(); await runningFirst;
+    assert.equal(first.result.kind, 'created'); assert.equal(first.phase, 'recover');
+    assert.equal(JSON.parse(record).name, secondName); assert.deepEqual(opened, []);
+    resume.second.resolve(); await runningSecond;
+    assert.equal(second.phase, 'complete'); assert.equal(record, 'null'); assert.deepEqual(opened, ['second']);
+    for (const name of new Set(['first', secondName])) assert.equal(git(api.destination(project, name), 'symbolic-ref', 'HEAD'), `refs/heads/${name}`);
+  } finally { resume.first.resolve(); resume.second.resolve(); await Promise.allSettled([runningFirst, runningSecond]); }
 });
 
 test('broken submodule gitfiles do not prevent finding healthy repositories on either machine', async t => {
