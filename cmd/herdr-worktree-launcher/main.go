@@ -1438,15 +1438,21 @@ func run(args []string) (any, bool, error) {
 		return line, nil
 	}
 	var err error
-	checkout := values["checkout"]
-	if checkout == "" && interactive {
-		checkout, err = ask("Checkout path", "")
+	checkout, explicitCheckout := values["checkout"]
+	if explicitCheckout && checkout == "" {
+		return nil, jsonOutput, errors.New("--checkout PATH requires a nonempty path.")
+	}
+	if !explicitCheckout {
+		checkout, err = os.Getwd()
 		if err != nil {
 			return nil, jsonOutput, err
 		}
 	}
-	if checkout == "" {
-		return nil, jsonOutput, errors.New("--checkout PATH is required; choose a repository explicitly.")
+	if interactive && !explicitCheckout {
+		checkout, err = ask("Checkout path", checkout)
+		if err != nil {
+			return nil, jsonOutput, err
+		}
 	}
 	action := ""
 	name := ""

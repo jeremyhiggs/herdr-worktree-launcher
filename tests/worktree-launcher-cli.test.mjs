@@ -161,20 +161,24 @@ test('CLI fetch errors stop before Worktrunk or session creation', async t => {
 });
 
 
-test('new and open require an explicit checkout despite cwd or environment defaults', async t => {
-  const f = await fixture(t);
-  const before = await f.git('worktree', 'list', '--porcelain');
-  for (const cwd of [f.elsewhere, f.project]) for (const action of ['new', 'open']) {
-    for (const legacyDefault of ['', f.project]) {
-      await assert.rejects(execute(cli, [action, action === 'new' ? 'must-not-create' : 'main', '--json'], {
-        cwd, env: { ...f.env, HERDR_WORKTREE_LAUNCHER_CHECKOUT: legacyDefault }, timeout: 15000,
-      }), /--checkout PATH/);
-    }
+test('CLI infers the current checkout, accepts overrides, and ignores the old environment default', async t => {
+  const f = await fixture(t), other = join(f.dir, 'another-project'), nested = join(f.project, 'src');
+  await execute('git', ['clone', f.project, other]); await mkdir(nested);
+  const run = (args, cwd, legacyDefault = other) => execute(cli, args, {
+    cwd, env: { ...f.env, HERDR_WORKTREE_LAUNCHER_CHECKOUT: legacyDefault }, timeout: 15000,
+  });
+  for (const cwd of [f.project, nested]) {
+    const opened = JSON.parse((await run(['open', 'main', '--json'], cwd)).stdout);
+    assert.equal(opened.path, f.project);
   }
-  await assert.rejects(f.run(['open', 'main', '--checkout=', '--json']), /--checkout PATH/);
-  assert.equal(await f.git('branch', '--list', 'must-not-create'), '');
-  assert.equal(await f.git('worktree', 'list', '--porcelain'), before);
-  assert.equal((await f.core()).terminals.length, 0);
-  const opened = await execute(cli, ['open', 'main', '--checkout', '.', '--json'], { cwd: f.project, env: f.env, timeout: 15000 });
-  assert.equal(JSON.parse(opened.stdout).path, f.project);
+  const overridden = JSON.parse((await run(['open', 'main', '--checkout', other, '--json'], f.project)).stdout);
+  assert.equal(overridden.path, other);
+  const created = JSON.parse((await run(['new', 'inferred', '--base', 'main', '--json'], nested)).stdout);
+  assert.equal(created.path, join(f.home, '.herdr/worktrees/sample/inferred'));
+  assert.equal(await f.git('symbolic-ref', 'HEAD'), 'refs/heads/main');
+  assert.equal((await execute('git', ['-C', other, 'branch', '--list', 'inferred'])).stdout.trim(), '');
+  const count = (await f.core()).terminals.length;
+  await assert.rejects(run(['open', 'main', '--json'], f.elsewhere, f.project), /not a git repository/i);
+  await assert.rejects(run(['open', 'main', '--checkout=', '--json'], f.project), /--checkout PATH/);
+  assert.equal((await f.core()).terminals.length, count);
 });

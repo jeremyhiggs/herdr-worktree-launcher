@@ -12,9 +12,9 @@ herdr-worktree-launcher api --request '{"operation":"context"}'
 herdr-worktree-launcher api --request '{"operation":"project","path":"/code/project"}'
 ```
 
-`--checkout PATH` is required for new/open commands. Interactive mode asks for
-a checkout path without a default. Repository selection never falls back to
-the environment or current directory. Linked checkouts resolve to the primary checkout. Naming uses
+`--checkout PATH` overrides the Git checkout inferred from the current directory.
+Interactive mode offers the current directory and lets the user change it.
+No environment-variable repository default is used. Linked checkouts resolve to the primary checkout. Naming uses
 origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.

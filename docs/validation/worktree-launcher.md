@@ -26,7 +26,7 @@ The GitHub workflows use the locally verified scripts. Hosted workflow runs rema
 
 Go tests use real Git repositories and Worktrunk. They verify staged, unstaged, and untracked preservation; branch attachment; upstreams; remote collisions; changed eligibility; literal paths; symlink ancestors; and partially completed operations. Naming tests cover origin URLs and bounded package/Python manifest reads.
 
-CLI selection tests require an explicit checkout even inside a repository or with an old environment default set.
+CLI selection tests cover inference from the current repository or a subdirectory, explicit overrides, rejection outside Git without an override, and ignoring the old environment default.
 
 CLI fetch tests cover remote-only bases and branches, both flag forms, selecting one remote, dirty-checkout preservation, and stopping before Worktrunk/session creation on fetch errors.
 

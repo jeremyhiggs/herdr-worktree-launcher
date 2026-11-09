@@ -23,7 +23,7 @@ herdr-worktree-launcher --help
 herdr-worktree-launcher --skill
 ```
 
-Every `new` or `open` command requires `--checkout PATH` to select one repository's canonical checkout from any directory. Add `--fetch origin` (or another configured remote) to refresh branches before creation or opening. Fetch failure stops the command. `USAGE.txt` lists commands and options.
+`new` and `open` infer the repository from your current directory. Use `--checkout PATH` to select a checkout explicitly or run from elsewhere. Add `--fetch origin` (or another configured remote) to refresh branches before creation or opening. Fetch failure stops the command. `USAGE.txt` lists commands and options.
 
 ## Desktop mod
 
