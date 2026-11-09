@@ -27,7 +27,7 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
 done
 name=worktree-launcher-mod
 mkdir -p "$staging/$name/mods/worktree-launcher" "$staging/$name/scripts"
-for file in main.js model.js cli.js config.js mod.json config.example.json keys.json README.md; do
+for file in main.js model.js cli.js config.js journal.js mod.json config.example.json keys.json README.md; do
   cp "$root/mods/worktree-launcher/$file" "$staging/$name/mods/worktree-launcher/"
 done
 cp "$root/scripts/install-mod.mjs" "$staging/$name/scripts/"

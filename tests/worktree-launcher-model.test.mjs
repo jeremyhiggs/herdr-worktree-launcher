@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorktreeModel, openCheckout as openCheckoutWithGit } from '../mods/worktree-launcher/model.js';
+import { createJournalStore } from '../mods/worktree-launcher/journal.js';
 
 const openCheckout = openCheckoutWithGit;
 
@@ -197,32 +198,46 @@ test('open failure retains created path and open-only retry never repeats Git', 
   await f.model.openCreated(); assert.equal(opens, 2); assert.equal(f.mutations, 1); assert.equal(f.saved, null);
 });
 
-test('a failed remote recovery does not override an explicit machine selection or allow another creation', async () => {
+test('unavailable remote recovery cannot redirect or block local creation, and its record survives', async () => {
   const f = setup();
   const pending = { ...f.request, machine: 'devbox' };
-  f.model.journal.load = async () => pending;
+  let text = JSON.stringify(pending);
+  f.model.journal = createJournalStore(async () => text, async (_path, next, expected) => {
+    assert.equal(expected, text); text = next;
+  }, '/operation.json');
+  const connected = [];
   f.model.connect = async machine => {
+    connected.push(machine);
     if (machine === 'devbox') throw new Error('devbox needs a login');
     return f.git;
   };
   await f.model.refresh();
-  await f.model.selectMachine(null);
+  assert.deepEqual(connected, [null]);
   assert.equal(f.model.machine, null); assert.deepEqual(f.model.projects, [a, b]);
   await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('another');
-  assert.equal(f.model.canCreate, false);
-  await f.model.submit(); assert.equal(f.mutations, 0);
+  assert.equal(f.model.canCreate, true);
+  await f.model.submit(); assert.equal(f.mutations, 1);
+  assert.deepEqual(JSON.parse(text).operations, [pending]);
+  await f.model.selectMachine('devbox');
+  assert.match(f.model.error, /login/); assert.deepEqual(f.model.pending, pending);
+  await f.model.selectMachine(null);
   await f.model.refresh(); assert.equal(f.model.machine, null);
+  assert.equal(f.model.pending, null); assert.deepEqual(f.model.projects, [a, b]);
 });
 
 test('a machine chosen during the initial journal load remains selected', async () => {
   for (const machine of [null, 'devbox']) {
     const gate = deferred(), f = setup({ machine });
-    f.model.journal.load = () => gate.promise;
+    f.model.journal.load = async selected => {
+      const pending = await gate.promise;
+      return selected === pending.machine ? pending : null;
+    };
     const initial = f.model.refresh(), selected = f.model.selectMachine(null);
     gate.resolve({ ...f.request, machine: 'devbox' });
     await Promise.all([initial, selected]);
     assert.equal(f.model.machine, null); assert.deepEqual(f.model.projects, [a, b]);
-    assert.equal(f.model.canCreate, false);
+    await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('local');
+    assert.equal(f.model.canCreate, true);
   }
 });
 
@@ -327,17 +342,22 @@ test('an unset root can be validated and saved on the selected machine without G
 });
 
 test('incomplete recovery stays on its saved machine when browsing other machines', async () => {
-  const connected = [], f = setup({ machine: null });
+  const connected = [], f = setup({ machine: 'devbox' });
   const request = { ...f.request, machine: 'devbox', project: { ...a, machine: 'devbox', root: '/remote/projects' } };
-  f.model.connect = async machine => { connected.push(machine); return { ...f.git, machine, inspect: async request => ({ kind: 'partial', request, path: request.path }) }; };
-  f.model.journal.load = async () => request;
+  f.model.connect = async machine => { connected.push(machine); return machine ? { ...f.git, machine, inspect: async request => ({ kind: 'partial', request, path: request.path }) } : f.git; };
+  let text = JSON.stringify(request);
+  f.model.journal = createJournalStore(async () => text, async (_path, next, expected) => {
+    assert.equal(expected, text); text = next;
+  }, '/operation.json');
   await f.model.refresh();
   assert.equal(f.model.machine, 'devbox'); assert.deepEqual(connected, ['devbox']);
   assert.equal(f.model.phase, 'partial'); assert.equal(await f.model.selectMachine(null), true);
   await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('local');
-  await f.model.submit(); assert.equal(f.mutations, 0); assert.equal(f.model.canCreate, false);
+  assert.equal(f.model.canCreate, true);
+  await f.model.submit(); assert.equal(f.mutations, 1);
+  assert.deepEqual(JSON.parse(text).operations, [request]);
   await f.model.selectMachine('devbox'); assert.equal(f.model.phase, 'partial');
-  await f.model.openCreated(); assert.equal(f.opens, 0); assert.equal(f.mutations, 0);
+  await f.model.openCreated(); assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
 });
 
 

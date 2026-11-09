@@ -106,6 +106,7 @@ Review every image before committing. Check the form, menu contents, sidebar, te
 | `scripts/build-cli.sh` | Build the standalone Go CLI |
 | `scripts/install-cli.sh` | Install the standalone binary, or build it with Go first |
 | `mods/worktree-launcher/config.js` | Saved project roots |
+| `mods/worktree-launcher/journal.js` | Recovery records separated by machine, with stale-write protection |
 | `scripts/install-mod.mjs` | Copy, native check, and shortcut merge |
 | `scripts/test-app.mjs` | Interactive sample app |
 | `scripts/capture-screenshots.mjs` | Disposable screenshot installation |

@@ -60,7 +60,7 @@ async function start() {
     const startup = join(process.env.ZDOTDIR ?? process.env.HOME, '.zshenv');
     restore.push(`if [[ -r ${quote(startup)} ]]; then source ${quote(startup)}; fi`, `export HC_SOCKET=${quote(join(root, 'run/herdr-core/hw.sock'))}`);
     await writeFile(join(root, 'shell/.zshenv'), `${restore.join('\n')}\n`, { mode: 0o600 });
-    for (const name of ['main.js', 'model.js', 'cli.js', 'config.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md']) await copyFile(join(repository, 'mods/worktree-launcher', name), join(mod, name));
+    for (const name of ['main.js', 'model.js', 'cli.js', 'config.js', 'journal.js', 'mod.json', 'config.example.json', 'keys.json', 'README.md']) await copyFile(join(repository, 'mods/worktree-launcher', name), join(mod, name));
     await copyFile(join(mod, 'keys.json'), join(root, 'app/keys.json'));
     await writeFile(join(root, 'app/settings.json'), JSON.stringify({ core: binaries.core, telemetry: false }));
     await writeFile(join(root, 'app/shared.json'), JSON.stringify({ 'frame.welcomed': 'skipped' }));

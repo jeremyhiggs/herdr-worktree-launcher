@@ -3,6 +3,7 @@ import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, Virtu
 import { exec, appHome, readTextFile, writeTextFile, spaces, panes, machines, knownAgents, pickFolder, run, theme, props, closeOverlay } from 'herdr';
 import { connectCLI, listCLIPrograms } from './cli.js';
 import { createConfigStore } from './config.js';
+import { createJournalStore } from './journal.js';
 import { WorktreeModel, openCheckout } from './model.js';
 
 function selectableText(id, text) {
@@ -44,25 +45,13 @@ export default class WorktreeLauncher extends View {
     }
     const config = createConfigStore(readTextFile, writeTextFile, `${appHome()}/data/worktree-launcher-config.json`, `${appHome()}/mods/worktree-launcher/config.json`);
     const recordPath = `${appHome()}/data/worktree-launcher-operation.json`;
-    let snapshot = null;
     this.model = new WorktreeModel({
       machine: spaces().find(s => s.active)?.machine ?? null,
       connect: machine => connectCLI(exec, machine),
       listAgents: async machine => listCLIPrograms(exec, machine, await knownAgents({ on: machine }).catch(() => [])),
       config: machine => config.get(machine),
       saveRoot: (machine, root) => config.set(machine, root),
-      journal: {
-        load: async () => {
-          snapshot = await readTextFile(recordPath);
-          try { return snapshot ? JSON.parse(snapshot) : null; }
-          catch { throw new Error('Recovery record is unreadable. Inspect data/worktree-launcher-operation.json before creating another worktree.'); }
-        },
-        save: async request => {
-          const next = JSON.stringify(request);
-          await writeTextFile(recordPath, next, snapshot);
-          snapshot = next;
-        },
-      },
+      journal: createJournalStore(readTextFile, writeTextFile, recordPath),
     });
     this.showChoice('machine', this.model.machine ?? 'Local');
     this.task(cx, async (_open, changed) => {
@@ -378,7 +367,7 @@ export default class WorktreeLauncher extends View {
       .child(picker('launch'))
       .when(Boolean(m.error), el => el.child(div().max_h(100).overflow_y_scrollbar().child(selectableText('operation-error', m.error).text_color(t.blocked))))
       .when(m.phase === 'partial', el => el.child(selectableText('recovery-instructions', 'Creation is blocked until this operation is inspected. See recovery instructions in the README.').text_size(11).text_color(t.muted)))
-      .when(Boolean(m.pending) && m.phase === 'editing', el => el.child(selectableText('pending-operation', `An operation on ${m.pending.machine ?? 'Local'} needs recovery. Select that machine to resolve it before creating another worktree.`).text_size(11).text_color(t.muted)))
+      .when(Boolean(m.pending) && m.phase === 'editing', el => el.child(selectableText('pending-operation', `An operation on ${m.machine ?? 'Local'} needs recovery. Refresh to inspect it, or select another machine to continue.`).text_size(11).text_color(t.muted)))
       .child(h_flex().gap(8).justify_end()
         .child(button('close', 'Close', (_e, cx) => { this.dismiss(); cx.notify(); }, m.busy, false, 6))
         .when(m.phase === 'recover', el => el.child(button('open-created', m.reusing ? 'Open worktree' : 'Open created worktree', (_e, cx) => this.task(cx, open => m.openCreated(open)), false, true, 7)))

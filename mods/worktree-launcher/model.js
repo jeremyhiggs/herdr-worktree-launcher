@@ -65,7 +65,6 @@ export class WorktreeModel {
     this.phase = 'loading';
     this.result = null;
     this.pending = null;
-    this.journalLoaded = false;
   }
   get busy() { return ['configuring', 'fetching', 'creating', 'opening'].includes(this.phase); }
   get editable() { return !this.closed && ['editing', 'loading'].includes(this.phase); }
@@ -90,15 +89,13 @@ export class WorktreeModel {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
     const previousLaunch = this.launch.key;
-    this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.rootReady = false; this.phase = 'loading';
+    this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.pending = null; this.rootReady = false; this.phase = 'loading';
     changed();
     try {
-      const pending = await this.journal.load();
+      const pending = await this.journal.load(this.machine);
       if (this.closed || generation !== this.generation) return;
-      if (pending && !this.journalLoaded) this.machine = pending.machine ?? null;
-      this.journalLoaded = true;
       this.pending = pending;
-      const recovering = pending && (pending.machine ?? null) === this.machine;
+      const recovering = !!pending;
       const config = recovering ? { project_root: pending.project.root } : await this.config(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.root = config.project_root ?? '';
@@ -121,7 +118,7 @@ export class WorktreeModel {
           this.error = result.error || 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.';
           return;
         }
-        await this.journal.save(null);
+        await this.journal.save(null, this.machine);
         this.pending = null;
         if (this.closed || generation !== this.generation) return;
         contents = this.root ? await git.discover(config) : [];
@@ -135,7 +132,6 @@ export class WorktreeModel {
   }
   async selectMachine(machine, changed) {
     if (!this.canSelectMachine) return false;
-    this.journalLoaded = true;
     if (this.machine === machine) return false;
     this.launch = shellLaunch; this.launches = [shellLaunch];
     this.machine = machine; this.root = '';
@@ -211,18 +207,18 @@ export class WorktreeModel {
       const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name, checkout: this.action === 'existing' ? this.ref.checkout : null });
       request.launch = this.launch;
       request.attempt = randomUUID();
-      await this.journal.save(request);
+      await this.journal.save(request, this.machine);
       this.pending = request;
       saved = true;
       this.result = await this.git.create(request);
       if (this.result.kind === 'created') { await this.openCreated(open); return; }
       this.error = this.result.error;
-      if (this.result.kind === 'absent') { await this.journal.save(null); this.pending = null; this.result = null; this.phase = 'editing'; }
+      if (this.result.kind === 'absent') { await this.journal.save(null, this.machine); this.pending = null; this.result = null; this.phase = 'editing'; }
       else this.phase = 'partial';
     } catch (e) {
       this.error = e.message;
       if (saved && ['context_missing', 'dependency_missing', 'core_unavailable'].includes(e.kind)) {
-        try { await this.journal.save(null); this.pending = null; saved = false; }
+        try { await this.journal.save(null, this.machine); this.pending = null; saved = false; }
         catch (error) { this.error += ` Recovery record could not be cleared: ${error.message}`; }
       }
       this.phase = saved ? 'partial' : 'editing';
@@ -234,7 +230,7 @@ export class WorktreeModel {
     try {
       const result = await this.git.inspect(this.result.request, { recover: true });
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
-      if (this.pending) { await this.journal.save(null); this.pending = null; }
+      if (this.pending) { await this.journal.save(null, this.machine); this.pending = null; }
       const request = { ...result.request, launch: this.launch };
       this.result = { ...result, request };
       await open(request);

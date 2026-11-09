@@ -169,23 +169,26 @@ The CLI validates checkout identity and creates the session. The UI waits for th
 
 ## Recovery after an interrupted operation
 
-The launcher records an operation before Git creation in `<app-home>/data/worktree-launcher-operation.json`. The record includes its machine and selected program. The launcher clears it once Git creation is verified, before opening or selecting a session.
+The UI records operations by machine in `<app-home>/data/worktree-launcher-operation.json`. Each record includes its machine and selected program. The UI clears the record once Git creation is verified, before opening or selecting a session. The CLI stores no recovery state between invocations.
 
-After a reload or closure, the launcher inspects any remaining record and Git. A complete checkout or an operation with no created artifacts clears the record and loads projects. Later commits, upstream changes, and project-name changes do not make an otherwise valid checkout incomplete. Its Git repository, checkout path, and selected branch must still match.
+After a reload or closure, the UI inspects the selected machine's record and Git. A complete checkout or an operation with no created artifacts clears that record and loads projects. Later commits, upstream changes, and project-name changes do not make an otherwise valid checkout incomplete. Its Git repository, checkout path, and selected branch must still match.
 
 An older Git command can finish after closure. New requests recheck branches and destinations, and each attempt has a unique record ID. An older attempt cannot clear a newer recovery record.
 
-An incomplete operation blocks new creation across all machines. The launcher preserves the branch, checkout, and record for inspection. It never removes worktrees or branches automatically.
+An incomplete operation blocks new creation only on its original machine. Other machines remain usable, even when the original machine is offline or lacks the CLI. Recovery never changes the selected machine. The launcher preserves the branch, checkout, and record for inspection. It never removes worktrees or branches automatically.
 
-You can select another machine and browse its projects during recovery. Creation stays blocked until you resolve the saved operation on its original machine. Connection errors report the machine's login or connection failure; reconnect, then select **Refresh**.
+The record persists because an interrupted Git command can still finish after its window closes. A new UI window must inspect that uncertain result before another creation on the same machine. Session-opening errors do not block later launches.
+
+Select the original machine to inspect its operation. Install the CLI there if needed. For connection errors, reconnect and select **Refresh**. Older single-operation records remain readable and migrate on the next save without losing the original operation.
 
 For an incomplete operation:
 
 1. Wait for the original Git operation to finish.
 2. On the reported machine, inspect the project with `git worktree list --porcelain` and `git branch -vv`.
 3. Repair any incomplete artifact manually.
-4. Move the operation record aside only after you understand the Git outcome.
-5. Open the launcher again.
+4. Back up the operation record after you understand the Git outcome.
+5. Remove only the repaired machine's entry from `operations`. Preserve entries for other machines. For a legacy single-operation record, move the file aside instead.
+6. Open the launcher again.
 
 Closing the window does not roll back Git.
 
@@ -198,7 +201,7 @@ app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mkdir -p "$app_home/mods/worktree-launcher"
 cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
   mods/worktree-launcher/cli.js \
-  mods/worktree-launcher/config.js \
+  mods/worktree-launcher/config.js mods/worktree-launcher/journal.js \
   mods/worktree-launcher/mod.json mods/worktree-launcher/config.example.json \
   mods/worktree-launcher/keys.json mods/worktree-launcher/README.md \
   "$app_home/mods/worktree-launcher/"
