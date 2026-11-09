@@ -1437,9 +1437,19 @@ func run(args []string) (any, bool, error) {
 		}
 		return line, nil
 	}
+	var err error
+	checkout := values["checkout"]
+	if checkout == "" && interactive {
+		checkout, err = ask("Checkout path", "")
+		if err != nil {
+			return nil, jsonOutput, err
+		}
+	}
+	if checkout == "" {
+		return nil, jsonOutput, errors.New("--checkout PATH is required; choose a repository explicitly.")
+	}
 	action := ""
 	name := ""
-	var err error
 	if len(positionals) > 0 {
 		action = positionals[0]
 	} else {
@@ -1467,16 +1477,6 @@ func run(args []string) (any, bool, error) {
 	}
 	if err = preflight(); err != nil {
 		return nil, jsonOutput, err
-	}
-	checkout := values["checkout"]
-	if checkout == "" {
-		checkout = os.Getenv("HERDR_WORKTREE_LAUNCHER_CHECKOUT")
-	}
-	if checkout == "" {
-		checkout, err = os.Getwd()
-		if err != nil {
-			return nil, jsonOutput, err
-		}
 	}
 	p, err := project(checkout, "")
 	if err != nil {

@@ -1,10 +1,10 @@
-Usage: herdr-worktree-launcher [new|open] [BRANCH] [options]
+Usage: herdr-worktree-launcher new|open BRANCH --checkout PATH [options]
 
   new feature/name --checkout /code/project --base main
   open origin/feature/name --checkout /code/project --fetch origin --program codex
-  (no arguments)                  Prompt for action, branch and program
+  (no arguments)                  Prompt for checkout path, action, branch and program
 
-  --checkout PATH   Checkout (default: HERDR_WORKTREE_LAUNCHER_CHECKOUT, then cwd)
+  --checkout PATH   Repository checkout (required; prompted in interactive mode)
   --base REF        Base branch for new (default: primary checkout's branch)
   --fetch REMOTE    Fetch one configured remote before branch selection and wt
   --program NAME    shell, claude, pi, opencode or codex (default: shell)

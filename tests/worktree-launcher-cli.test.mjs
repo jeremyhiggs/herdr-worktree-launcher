@@ -65,16 +65,14 @@ test('CLI runs from elsewhere, preserves the canonical checkout and adds fresh t
   for (const call of core.calls) { assert.equal(call.params.on, undefined); if (call.method === 'terminal.run') assert.equal(call.params.no_parent, true); }
 });
 
-test('CLI checkout default comes from the environment and ignores remote or stale terminal locations', async t => {
+test('explicit CLI checkouts ignore remote or stale terminal locations', async t => {
   const f = await fixture(t);
-  await writeFile(join(f.elsewhere, '.env'), `HERDR_WORKTREE_LAUNCHER_CHECKOUT=${f.project}\n`);
-  await assert.rejects(f.run(['open', 'main', '--json']), /not a git repository|Git repository|Git command failed/i);
   await writeFile(f.state, JSON.stringify({ calls: [], terminals: [
     { address: 'devbox/t1', state: 'live', cwd: f.project, labels: { 'herdr.space': 'remote-space' } },
     { address: 't2', state: 'live', cwd: f.project, foreground: { cwd: f.elsewhere }, labels: { 'herdr.space': 'stale-space' } },
     { address: 't3', state: 'live', cwd: f.elsewhere, foreground: { cwd: f.project }, labels: { 'herdr.space': 'correct-space' } },
   ] }));
-  const result = JSON.parse((await f.run(['open', 'main', '--json'], { HERDR_WORKTREE_LAUNCHER_CHECKOUT: f.project })).stdout);
+  const result = JSON.parse((await f.run(['open', 'main', '--checkout', f.project, '--json'], { HERDR_WORKTREE_LAUNCHER_CHECKOUT: join(f.dir, 'unused-default') })).stdout);
   assert.equal(result.path, f.project); assert.equal(result.space, 'correct-space');
   assert.equal((await f.core()).terminals.length, 4);
 });
@@ -160,4 +158,23 @@ test('CLI fetch errors stop before Worktrunk or session creation', async t => {
   assert.equal(await f.git('worktree', 'list', '--porcelain'), before);
   await assert.rejects(readFile(marker), { code: 'ENOENT' });
   assert.equal((await f.core()).terminals.length, 0);
+});
+
+
+test('new and open require an explicit checkout despite cwd or environment defaults', async t => {
+  const f = await fixture(t);
+  const before = await f.git('worktree', 'list', '--porcelain');
+  for (const cwd of [f.elsewhere, f.project]) for (const action of ['new', 'open']) {
+    for (const legacyDefault of ['', f.project]) {
+      await assert.rejects(execute(cli, [action, action === 'new' ? 'must-not-create' : 'main', '--json'], {
+        cwd, env: { ...f.env, HERDR_WORKTREE_LAUNCHER_CHECKOUT: legacyDefault }, timeout: 15000,
+      }), /--checkout PATH/);
+    }
+  }
+  await assert.rejects(f.run(['open', 'main', '--checkout=', '--json']), /--checkout PATH/);
+  assert.equal(await f.git('branch', '--list', 'must-not-create'), '');
+  assert.equal(await f.git('worktree', 'list', '--porcelain'), before);
+  assert.equal((await f.core()).terminals.length, 0);
+  const opened = await execute(cli, ['open', 'main', '--checkout', '.', '--json'], { cwd: f.project, env: f.env, timeout: 15000 });
+  assert.equal(JSON.parse(opened.stdout).path, f.project);
 });

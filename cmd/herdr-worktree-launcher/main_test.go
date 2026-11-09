@@ -162,7 +162,6 @@ func setup(t *testing.T) fixture {
 	t.Setenv("WORKTRUNK_CONFIG_PATH", filepath.Join(root, "worktrunk.toml"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(root, "gitconfig"))
-	t.Setenv("HERDR_WORKTREE_LAUNCHER_CHECKOUT", "")
 	_ = os.WriteFile(filepath.Join(root, "worktrunk.toml"), nil, 0600)
 	_ = os.WriteFile(f.state, []byte(`{"terminals":[],"calls":[]}`), 0600)
 	f.git(t, "init", "-b", "main")

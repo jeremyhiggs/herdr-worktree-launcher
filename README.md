@@ -108,7 +108,7 @@ To rebuild and update the installed command, run `./scripts/install-cli.sh --upd
 
 ### Choose the canonical checkout
 
-`--checkout` points to **one repository's canonical checkout**, not a directory containing projects. It takes priority over the environment default and current directory.
+`--checkout` points to **one repository's canonical checkout**, not a directory containing projects. Supply `--checkout PATH` for every `new` or `open` command.
 
 From any directory, run:
 
@@ -120,27 +120,20 @@ herdr-worktree-launcher open feature/rate-limits \
   --checkout /work/projects/sample-api --program codex
 ```
 
-To reuse the same checkout from any directory, set a shell default:
-
-```sh
-export HERDR_WORKTREE_LAUNCHER_CHECKOUT=/work/projects/sample-api
-herdr-worktree-launcher new feature/mobile --base main
-```
-
-Without `--checkout` or the environment default, the CLI uses the current repository. From a linked worktree, it resolves the canonical checkout.
+There is no environment or current-directory default. To explicitly use the repository in your current directory, pass `--checkout .`. Linked checkouts resolve to their canonical checkout.
 
 ### Create or open a session
 
-Run `herdr-worktree-launcher` without a command for text prompts. It asks for the action, branch, base, and installed program.
+Run `herdr-worktree-launcher` without a command for text prompts. It asks for the checkout path, action, branch, base, and installed program. The checkout prompt has no default.
 
 `new` creates a branch from `--base`, or the canonical checkout's current branch. `open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Add `--fetch REMOTE` to refresh one configured remote before resolving branches and invoking Worktrunk:
 
 ```sh
-herdr-worktree-launcher new feature/mobile --base origin/main --fetch origin
-herdr-worktree-launcher open origin/feature/search --fetch origin
+herdr-worktree-launcher new feature/mobile --checkout /work/projects/sample-api --base origin/main --fetch origin
+herdr-worktree-launcher open origin/feature/search --checkout /work/projects/sample-api --fetch origin
 ```
 
-Use `--checkout` or the environment default when running outside the repository. Fetching preserves the canonical checkout's branch, index, and files. If fetching fails, the command stops before creating a worktree or session. Without `--fetch`, it uses the refs already available locally.
+The explicit checkout path lets these commands run from any directory. Fetching preserves the canonical checkout's branch, index, and files. If fetching fails, the command stops before creating a worktree or session. Without `--fetch`, it uses the refs already available locally.
 
 Each successful command starts a **fresh terminal**. If a matching Herdr space exists, the CLI adds a new tab there. Otherwise, it creates a space. The desktop app adopts the space and tabs when it connects.
 
