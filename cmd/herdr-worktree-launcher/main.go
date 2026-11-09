@@ -73,10 +73,14 @@ func command(cwd, program string, args ...string) ([]byte, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Dir = cwd
+	cmd.WaitDelay = 5 * time.Second
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = strings.TrimSpace(string(out))
@@ -104,6 +108,7 @@ type Project struct {
 	Label    string `json:"label"`
 	Basename string `json:"basename"`
 	Machine  any    `json:"machine"`
+	Explicit bool   `json:"explicit,omitempty"`
 }
 type Ref struct {
 	Ref      string  `json:"ref"`
@@ -386,6 +391,7 @@ func pythonName(text string) string {
 	return names["tool.poetry.name"]
 }
 func project(path, root string) (Project, error) {
+	explicit := root == ""
 	id, err := identity(path)
 	if err != nil {
 		return Project{}, err
@@ -441,7 +447,7 @@ func project(path, root string) (Project, error) {
 		}
 	}
 	label, _ := filepath.Rel(root, primary)
-	return Project{id.ID, primary, root, label, name, nil}, nil
+	return Project{ID: id.ID, Path: primary, Root: root, Label: label, Basename: name, Explicit: explicit}, nil
 }
 func validateProject(p Project) error {
 	if !clean(p.ID) || !clean(p.Path) || !clean(p.Root) {
@@ -453,6 +459,9 @@ func validateProject(p Project) error {
 	}
 	if current.ID != p.ID || current.Path != p.Path || !inside(p.Path, p.Root) || current.Basename != p.Basename {
 		return errors.New("Project identity changed; Refresh and select it again.")
+	}
+	if p.Explicit {
+		return nil
 	}
 	rel, _ := filepath.Rel(p.Root, p.Path)
 	for _, component := range strings.Split(rel, string(filepath.Separator)) {
@@ -699,10 +708,18 @@ func destination(p Project, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	home, err = real(home)
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(home, ".herdr", "worktrees", p.Basename, slug), nil
 }
 func validateDestination(path string) error {
 	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	home, err = real(home)
 	if err != nil {
 		return err
 	}
@@ -898,7 +915,7 @@ func create(r Request) (Result, error) {
 		return Result{}, err
 	}
 	if _, err := core("terminal.list", map[string]any{}); err != nil {
-		return Result{}, err
+		return Result{}, fail("core_unavailable", err.Error(), "No worktree operation was started.")
 	}
 	if r.Reuse {
 		return inspect(r, false), nil
@@ -937,6 +954,10 @@ func create(r Request) (Result, error) {
 	result := inspect(r, false)
 	if runErr != nil {
 		result.Error = runErr.Error()
+		if result.Kind == "absent" && (errors.Is(runErr, context.DeadlineExceeded) || errors.Is(runErr, exec.ErrWaitDelay)) {
+			result.Kind = "partial"
+			result.Error += "; Worktrunk completion is unconfirmed; inspect Git before retrying"
+		}
 		if result.Kind == "created" {
 			result.Error += "; checkout preserved at " + r.Path
 		}

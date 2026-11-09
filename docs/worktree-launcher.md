@@ -33,7 +33,7 @@ To set the local root during installation, run:
 pnpm run install:mod --project-root /work/projects
 ```
 
-Here, your shell expands `$HOME` before the installer runs. An update preserves roots unless you supply `--project-root` again.
+An update preserves roots unless you supply `--project-root` again.
 
 Older installations can store settings in `mods/worktree-launcher/config.json`. The installer migrates these settings. The launcher also reads them until its first save to the new location.
 
@@ -42,6 +42,8 @@ Older installations can store settings in `mods/worktree-launcher/config.json`. 
 The launcher searches below the saved root and uses root-relative project names. Linked Git worktrees share one project entry.
 
 Discovery excludes ignored repositories, bare repositories, native JJ-only workspaces, and common build directories. Excluded directory names include `node_modules`, `vendor`, `target`, `build`, `dist`, `.next`, and `coverage`.
+
+Explicit CLI checkouts use the path you supply, including folders excluded from discovery.
 
 **Refresh** scans again. The launcher also refreshes when you open it. A failed or truncated scan reports an error instead of a partial project list.
 

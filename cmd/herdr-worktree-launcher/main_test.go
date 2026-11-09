@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,8 +20,23 @@ type fixtureCore struct {
 // The test binary doubles as a tiny hc executable. Production still uses only
 // git, wt and hc; no script interpreter is needed by these fixtures.
 func TestMain(m *testing.M) {
+	if os.Getenv("WL_FIXTURE_HOLD_PIPE") == "1" {
+		time.Sleep(20 * time.Second)
+		os.Exit(0)
+	}
 	if os.Getenv("WL_FIXTURE_WT_FAILURE") != "" && filepath.Base(os.Args[0]) == "wt" {
 		args := os.Args[1:]
+		if os.Getenv("WL_FIXTURE_WT_FAILURE") == "held-pipes" {
+			binary, _ := os.Executable()
+			child := exec.Command(binary)
+			child.Env = append(os.Environ(), "WL_FIXTURE_HOLD_PIPE=1")
+			child.Stdout, child.Stderr = os.Stdout, os.Stderr
+			if err := child.Start(); err != nil {
+				os.Exit(2)
+			}
+			_ = os.WriteFile(os.Getenv("WL_FIXTURE_CHILD_PID"), []byte(fmt.Sprint(child.Process.Pid)), 0600)
+			os.Exit(0)
+		}
 		if os.Getenv("WL_FIXTURE_WT_FAILURE") == "branch-only" {
 			for i, arg := range args {
 				if arg == "--create" && i+1 < len(args) {
@@ -68,6 +84,10 @@ func TestMain(m *testing.M) {
 		var result any
 		switch req.Method {
 		case "terminal.list":
+			if os.Getenv("WL_FIXTURE_FAIL_LIST") != "" {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"message": "fixture list failed"}})
+				os.Exit(0)
+			}
 			result = map[string]any{"terminals": state.Terminals}
 		case "terminal.run":
 			if os.Getenv("WL_FIXTURE_FAIL_RUN") != "" {
@@ -818,5 +838,114 @@ func TestWorktrunkProjectHooksAreSkipped(t *testing.T) {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("project hook executed during creation: %s", path)
 		}
+	}
+}
+
+func TestSymlinkedHomeCreatesVerifiableWorktree(t *testing.T) {
+	f := setup(t)
+	alias := filepath.Join(f.root, "home-alias")
+	if err := os.Symlink(f.home, alias); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", alias)
+	r := f.prepare(t, "new", "refs/heads/main", "linked-home")
+	if r.Path != filepath.Join(f.home, ".herdr", "worktrees", "sample", "linked-home") {
+		t.Fatalf("destination is not canonical: %s", r.Path)
+	}
+	result, err := create(r)
+	if err != nil || result.Kind != "created" {
+		t.Fatalf("create: %+v %v", result, err)
+	}
+	if inspected := inspect(r, true); inspected.Kind != "created" {
+		t.Fatalf("inspect: %+v", inspected)
+	}
+}
+
+func TestExplicitCheckoutBypassesOnlyDiscoveryFilters(t *testing.T) {
+	for _, mode := range []string{"pruned", "ignored"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			if mode == "pruned" {
+				next := filepath.Join(f.root, "build")
+				if err := os.Rename(f.repo, next); err != nil {
+					t.Fatal(err)
+				}
+				f.repo = next
+			} else {
+				if _, err := git(f.root, "init"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(f.root, ".gitignore"), []byte("*\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			discovered, err := project(f.repo, f.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := validateProject(discovered); err == nil || !strings.Contains(err.Error(), "excluded") {
+				t.Fatalf("discovery filter missing: %v", err)
+			}
+			opened, _, err := run([]string{"open", "main", "--checkout", f.repo, "--json"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if opened.(OpenResult).Path != f.repo {
+				t.Fatalf("wrong explicit checkout: %+v", opened)
+			}
+		})
+	}
+}
+
+func TestCoreListFailureReportsUnstartedCreation(t *testing.T) {
+	f := setup(t)
+	r := f.prepare(t, "new", "refs/heads/main", "list-failed")
+	t.Setenv("WL_FIXTURE_FAIL_LIST", "1")
+	_, err := create(r)
+	var detail *failure
+	if !errors.As(err, &detail) || detail.Kind != "core_unavailable" {
+		t.Fatalf("wrong pre-creation failure: %v", err)
+	}
+	if f.git(t, "branch", "--list", "list-failed") != "" {
+		t.Fatal("branch created")
+	}
+	if _, err := os.Stat(r.Path); !os.IsNotExist(err) {
+		t.Fatal("destination created")
+	}
+}
+
+func TestWorktrunkUnclosedPipesHaveBoundedWaitAndUncertainOutcome(t *testing.T) {
+	f := setup(t)
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(f.bin, "wt")); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(binary, filepath.Join(f.bin, "wt")); err != nil {
+		t.Fatal(err)
+	}
+	pidFile := filepath.Join(f.root, "child.pid")
+	t.Setenv("WL_FIXTURE_WT_FAILURE", "held-pipes")
+	t.Setenv("WL_FIXTURE_CHILD_PID", pidFile)
+	t.Cleanup(func() {
+		if raw, err := os.ReadFile(pidFile); err == nil {
+			var pid int
+			if _, err := fmt.Sscan(string(raw), &pid); err == nil && pid > 0 {
+				if child, err := os.FindProcess(pid); err == nil {
+					_ = child.Kill()
+				}
+			}
+		}
+	})
+	r := f.prepare(t, "new", "refs/heads/main", "uncertain")
+	start := time.Now()
+	result, err := create(r)
+	if err != nil || result.Kind != "partial" || result.Error == "" {
+		t.Fatalf("uncertain outcome: %+v %v", result, err)
+	}
+	if time.Since(start) >= 15*time.Second {
+		t.Fatal("waited for the descendant instead of bounding the pipe wait")
 	}
 }

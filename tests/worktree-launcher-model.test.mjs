@@ -372,3 +372,22 @@ test('destination previews discard stale responses', async () => {
   gate.resolve('/old'); await preview; assert.equal(f.model.path, '');
   f.git.destination = async () => '/new'; await f.model.preview(); assert.equal(f.model.path, '/new');
 });
+
+test('known pre-creation failures clear recovery while unknown creation outcomes remain guarded', async () => {
+  for (const kind of ['context_missing', 'dependency_missing', 'core_unavailable', undefined]) {
+    const f = setup({ git: { create: async () => { throw Object.assign(new Error('creation unavailable'), { kind }); } } });
+    await fill(f.model); await f.model.submit();
+    assert.equal(f.model.phase, kind ? 'editing' : 'partial');
+    assert.equal(f.saved === null, !!kind); assert.equal(f.model.pending === null, !!kind);
+    assert.equal(f.opens, 0); assert.match(f.model.error, /creation unavailable/);
+  }
+});
+
+test('a failed recovery-record clear keeps known pre-creation failures guarded', async () => {
+  const f = setup({ git: { create: async () => { throw Object.assign(new Error('core unavailable'), { kind: 'core_unavailable' }); } } });
+  const save = f.model.journal.save;
+  f.model.journal.save = async request => { if (request === null) throw new Error('record changed'); await save(request); };
+  await fill(f.model); await f.model.submit();
+  assert.equal(f.model.phase, 'partial'); assert(f.saved); assert(f.model.pending);
+  assert.match(f.model.error, /record changed/); assert.equal(f.opens, 0);
+});

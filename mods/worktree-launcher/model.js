@@ -221,6 +221,10 @@ export class WorktreeModel {
       else this.phase = 'partial';
     } catch (e) {
       this.error = e.message;
+      if (saved && ['context_missing', 'dependency_missing', 'core_unavailable'].includes(e.kind)) {
+        try { await this.journal.save(null); this.pending = null; saved = false; }
+        catch (error) { this.error += ` Recovery record could not be cleared: ${error.message}`; }
+      }
       this.phase = saved ? 'partial' : 'editing';
     }
   }
