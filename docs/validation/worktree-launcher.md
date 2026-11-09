@@ -10,6 +10,8 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
 | Node tests | 73 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
+| `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.13 |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |
 | Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, and worktree creation through the CLI |
@@ -17,6 +19,8 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and core 0.1.18.
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
+
+The GitHub workflows use the locally verified scripts. Hosted workflow runs remain unverified until these changes are pushed.
 
 ## Safety and behavior
 

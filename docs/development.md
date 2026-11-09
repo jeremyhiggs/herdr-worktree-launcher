@@ -6,24 +6,37 @@ For user instructions, see the [README](../README.md). The [validation report](v
 
 Use Go and Worktrunk from `mise.toml`, plus Node 24 or newer and pnpm 11.x. The repository pins pnpm 11.28.6.
 
-With nvm, run:
+Install Git and zsh (already supplied on macOS), then install the pinned tools and development dependencies:
 
 ```sh
-nvm use
+mise install
 pnpm install --frozen-lockfile
 ```
 
 ## Check changes
 
+The GitHub workflows use the same scripts as local development:
+
+| Command | Checks or output |
+| --- | --- |
+| `./scripts/build-cli.sh` | Standalone executable in `dist/` |
+| `./scripts/lint.sh` | Go formatting and vet, JavaScript syntax, ShellCheck, and actionlint |
+| `./scripts/test.sh` | Go tests with the race detector, then all Node tests |
+| `./scripts/package.sh` | Four CLI archives, a desktop mod archive, and SHA256SUMS in `dist/packages/` |
+
+Packaging supports `--output DIRECTORY`. It includes only distribution files; personal configuration, recovery records, generated API files, and screenshot fixtures are excluded.
+
+CI runs lint on Linux and build/tests on Linux and macOS for pushes, pull requests, and manual runs. The Packages workflow cross-compiles macOS and Linux binaries for amd64 and arm64, then uploads the archives and checksums as a workflow artifact. It does not publish a GitHub release.
+
+For package contents and installation, see [Install a package](packages.md).
+
+Tests use disposable Git repositories, real Worktrunk, and core/app protocol fixtures. They need no live Herdr instance. Native mod loading remains a separate macOS check:
+
 ```sh
-go test ./...
-pnpm test
 herdr-app check mods/worktree-launcher
 ```
 
-The tests use disposable Git repositories and local bare remotes. Some app interactions use test doubles. The native check validates initial loading, not the full interactive workflow.
-
-No separate lint or typecheck command is configured.
+That check validates initial loading, not the full interactive workflow. JavaScript linting checks syntax; no separate type checker is configured.
 
 ## Open an isolated test app
 
@@ -48,13 +61,7 @@ This stops only the test app and core. It preserves files and logs for inspectio
 
 ## Test a connected machine
 
-The optional integration test creates and removes disposable Git repositories on the named machine:
-
-```sh
-WORKTREE_TEST_MACHINE=devbox node --test tests/worktree-launcher-remote.test.mjs
-```
-
-Replace `devbox` with a machine already connected in Herdr. The default test run skips this test.
+Install the CLI and Worktrunk on the connected machine. Use the desktop launcher's machine picker to exercise remote discovery, fetch, creation, and session opening with disposable projects. This native remote check is separate from CI's local fixtures.
 
 ## Capture README screenshots
 

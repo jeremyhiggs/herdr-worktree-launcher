@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 output="$root/dist/herdr-worktree-launcher"
 while [ "$#" -gt 0 ]; do
   case "$1" in
