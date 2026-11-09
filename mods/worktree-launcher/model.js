@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { operationsConflict } from './journal.js';
 
 const shellLaunch = { key: 'shell', label: 'Shell', argv: null };
 const agentKeys = ['claude', 'pi', 'opencode', 'codex'];
@@ -92,11 +93,7 @@ export class WorktreeModel {
     this.project = null; this.resetFields(); this.projects = []; this.git = null; this.result = null; this.pending = null; this.rootReady = false; this.phase = 'loading';
     changed();
     try {
-      const pending = await this.journal.load(this.machine);
-      if (this.closed || generation !== this.generation) return;
-      this.pending = pending;
-      const recovering = !!pending;
-      const config = recovering ? { project_root: pending.project.root } : await this.config(this.machine);
+      const config = await this.config(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.root = config.project_root ?? '';
       changed();
@@ -104,26 +101,10 @@ export class WorktreeModel {
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
-      let [contents, programs] = await Promise.all([recovering ? git.inspect(pending, { recover: true }) : this.root ? git.discover(config) : [], programsTask]);
+      const [contents, programs] = await Promise.all([this.root ? git.discover(config) : [], programsTask]);
       if (this.closed || generation !== this.generation) return;
       this.launches = launchChoices(programs);
-      this.launch = this.launches.find(item => item.key === (recovering ? pending.launch?.key ?? 'shell' : previousLaunch)) ?? shellLaunch;
-      changed();
-      if (recovering) {
-        const result = contents;
-        if (!['created', 'absent'].includes(result.kind)) {
-          this.result = result;
-          this.rootReady = !!this.root;
-          this.phase = 'partial';
-          this.error = result.error || 'A previous operation was interrupted. No complete checkout was observed. Inspect Git and the recovery record before another creation.';
-          return;
-        }
-        await this.journal.save(null, this.machine);
-        this.pending = null;
-        if (this.closed || generation !== this.generation) return;
-        contents = this.root ? await git.discover(config) : [];
-        if (this.closed || generation !== this.generation) return;
-      }
+      this.launch = this.launches.find(item => item.key === previousLaunch) ?? shellLaunch;
       this.projects = contents; this.result = null; this.rootReady = !!this.root; this.phase = 'editing';
     } catch (e) {
       if (this.closed || generation !== this.generation) return;
@@ -199,26 +180,39 @@ export class WorktreeModel {
     if (this.busy) { this.error = 'The operation is finishing. This window stays open until the outcome is known.'; return false; }
     this.closed = true; this.generation++; return true;
   }
+  async reconcile(target) {
+    for (const pending of await this.journal.load(this.machine)) {
+      if (!operationsConflict(pending, target)) continue;
+      const result = await this.git.inspect(pending, { recover: true });
+      if (!['created', 'absent'].includes(result.kind)) throw new Error(`Previous operation for ${pending.name} at ${pending.path} is unresolved. ${result.error || 'Inspect Git before retrying this worktree.'}`);
+      await this.journal.clear(pending);
+    }
+  }
   async submit(open = this.open) {
     if (!this.canCreate || this.closed) return;
     this.phase = 'creating'; this.error = '';
     let saved = false;
     try {
+      const name = this.action === 'existing' ? this.ref.name : this.name;
+      const path = this.action === 'existing' && this.ref.checkout ? this.ref.checkout : await this.git.destination(this.project, name);
+      const target = { machine: this.machine, project: this.project, name, path };
+      await this.reconcile(target);
       const request = await this.git.prepare({ project: this.project, action: this.action, ref: this.ref.ref, name: this.name, checkout: this.action === 'existing' ? this.ref.checkout : null });
+      if (request.path !== path) await this.reconcile({ ...request, machine: this.machine });
       request.launch = this.launch;
       request.attempt = randomUUID();
-      await this.journal.save(request, this.machine);
+      await this.journal.save(request);
       this.pending = request;
       saved = true;
       this.result = await this.git.create(request);
       if (this.result.kind === 'created') { await this.openCreated(open); return; }
       this.error = this.result.error;
-      if (this.result.kind === 'absent') { await this.journal.save(null, this.machine); this.pending = null; this.result = null; this.phase = 'editing'; }
+      if (this.result.kind === 'absent') { await this.journal.clear(this.pending); this.pending = null; this.result = null; this.phase = 'editing'; }
       else this.phase = 'partial';
     } catch (e) {
       this.error = e.message;
       if (saved && ['context_missing', 'dependency_missing', 'core_unavailable'].includes(e.kind)) {
-        try { await this.journal.save(null, this.machine); this.pending = null; saved = false; }
+        try { await this.journal.clear(this.pending); this.pending = null; saved = false; }
         catch (error) { this.error += ` Recovery record could not be cleared: ${error.message}`; }
       }
       this.phase = saved ? 'partial' : 'editing';
@@ -230,7 +224,7 @@ export class WorktreeModel {
     try {
       const result = await this.git.inspect(this.result.request, { recover: true });
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
-      if (this.pending) { await this.journal.save(null, this.machine); this.pending = null; }
+      if (this.pending) { await this.journal.clear(this.pending); this.pending = null; }
       const request = { ...result.request, launch: this.launch };
       this.result = { ...result, request };
       await open(request);

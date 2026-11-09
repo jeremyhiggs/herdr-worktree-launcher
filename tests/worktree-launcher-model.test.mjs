@@ -19,10 +19,41 @@ function setup(overrides = {}) {
     prepare: async () => request, create: async () => { mutations++; return { kind: 'created', path: request.path, request }; },
     inspect: async r => ({ kind: 'created', path: r.path, request: r }), ...overrides.git,
   };
-  const model = new WorktreeModel({ connect: async () => git, config: async () => ({ project_root: '/projects' }), saveRoot: async () => {}, journal: { load: async () => saved, save: async r => { saved = r; } }, open: async () => { opens++; }, ...overrides });
+  const model = new WorktreeModel({ connect: async () => git, config: async () => ({ project_root: '/projects' }), saveRoot: async () => {}, journal: { load: async () => saved ? [saved] : [], save: async r => { saved = r; }, clear: async () => { saved = null; } }, open: async () => { opens++; }, ...overrides });
   return { model, git, request, get mutations() { return mutations; }, get opens() { return opens; }, get saved() { return saved; } };
 }
 async function fill(model) { await model.refresh(); await model.selectProject(a); model.setName('feature'); model.selectRef(ref); }
+
+test('recovery guards only the requested repository branch or destination, without blocking the form', async () => {
+  for (const [label, project, name, path, conflict] of [
+    ['unrelated worktree in the same repo', a, 'other', '/other/worktree', false],
+    ['same branch name in another repo', b, 'feature', '/other/worktree', false],
+    ['same branch through another checkout of the repo', { ...a, path: '/linked/checkout' }, 'feature', '/other/worktree', true],
+    ['same destination in another repo', b, 'other', '/fixture/worktree', true],
+  ]) {
+    const f = setup();
+    const pending = { ...f.request, project, name, path, attempt: 'older' };
+    let text = JSON.stringify(pending), inspected = 0;
+    f.model.journal = createJournalStore(async () => text, async (_path, next, expected) => {
+      assert.equal(expected, text); text = next;
+    }, '/operation.json');
+    f.git.inspect = async request => {
+      if (request.attempt === 'older') { inspected++; return { kind: 'partial', request, path: request.path, error: 'uncertain Git result' }; }
+      return { kind: 'created', request, path: request.path };
+    };
+    await fill(f.model);
+    assert.equal(f.model.phase, 'editing', label);
+    assert.equal(f.model.canCreate, true, label);
+    assert.equal(inspected, 0, 'Discovery must not inspect unrelated operations');
+    await f.model.submit();
+    assert.equal(inspected, conflict ? 1 : 0, label);
+    assert.equal(f.mutations, conflict ? 0 : 1, label);
+    assert.equal(f.model.phase, conflict ? 'editing' : 'complete', label);
+    if (conflict) assert.match(f.model.error, /uncertain Git result/);
+    const value = JSON.parse(text);
+    assert.deepEqual(value.operations ?? [value], [pending], label);
+  }
+});
 
 test('project remotes default to origin; fetching refreshes branches and retains a still-valid selection', async () => {
   const gate = deferred(), seen = [], refreshed = { ...ref, checkout: '/existing/main' };
@@ -219,26 +250,20 @@ test('unavailable remote recovery cannot redirect or block local creation, and i
   await f.model.submit(); assert.equal(f.mutations, 1);
   assert.deepEqual(JSON.parse(text).operations, [pending]);
   await f.model.selectMachine('devbox');
-  assert.match(f.model.error, /login/); assert.deepEqual(f.model.pending, pending);
+  assert.match(f.model.error, /login/); assert.equal(f.model.pending, null);
+  assert.deepEqual(await f.model.journal.load('devbox'), [pending]);
   await f.model.selectMachine(null);
   await f.model.refresh(); assert.equal(f.model.machine, null);
   assert.equal(f.model.pending, null); assert.deepEqual(f.model.projects, [a, b]);
 });
 
-test('a machine chosen during the initial journal load remains selected', async () => {
-  for (const machine of [null, 'devbox']) {
-    const gate = deferred(), f = setup({ machine });
-    f.model.journal.load = async selected => {
-      const pending = await gate.promise;
-      return selected === pending.machine ? pending : null;
-    };
-    const initial = f.model.refresh(), selected = f.model.selectMachine(null);
-    gate.resolve({ ...f.request, machine: 'devbox' });
-    await Promise.all([initial, selected]);
-    assert.equal(f.model.machine, null); assert.deepEqual(f.model.projects, [a, b]);
-    await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('local');
-    assert.equal(f.model.canCreate, true);
-  }
+test('discovery never reads old recovery records or changes the initial machine', async () => {
+  const f = setup();
+  f.model.journal.load = async () => { throw new Error('unreadable journal'); };
+  await fill(f.model);
+  assert.equal(f.model.machine, null); assert.equal(f.model.canCreate, true);
+  await f.model.submit();
+  assert.match(f.model.error, /unreadable journal/); assert.equal(f.mutations, 0);
 });
 
 test('an opening failure leaves no journal and the next launcher run shows projects', async () => {
@@ -250,18 +275,42 @@ test('an opening failure leaves no journal and the next launcher run shows proje
   assert.equal(f.model.result, null); assert.equal(f.mutations, 1);
 });
 
-test('reopening reconciles journal before allowing mutation, including incomplete artifacts', async () => {
+test('matching recovery is inspected before preparation and only settled operations are cleared', async () => {
   for (const kind of ['created', 'partial', 'absent']) {
-    const f = setup(); let mutation = 0;
-    const pending = { ...f.request, project: { ...a, root: '/projects' } };
-    f.model.journal.load = async () => pending;
-    f.git.inspect = async (r, options) => { assert.deepEqual(options, { recover: true }); return { kind, path: r.path, request: r, error: kind === 'partial' ? 'branch already exists' : '' }; };
-    f.git.create = async () => { mutation++; };
-    await f.model.refresh(); assert.equal(f.model.phase, kind === 'partial' ? 'partial' : 'editing');
-    assert.deepEqual(f.model.projects, kind === 'partial' ? [] : [a, b]);
-    assert.equal(f.model.pending, kind === 'partial' ? pending : null);
-    await f.model.submit(); assert.equal(mutation, 0);
+    const f = setup(); let clears = 0, inspections = 0, prepared = 0;
+    const pending = { ...f.request, attempt: 'older' };
+    f.model.journal.load = async () => [pending];
+    f.model.journal.clear = async request => { if (request.attempt === 'older') clears++; };
+    f.git.inspect = async (r, options) => {
+      assert.deepEqual(options, { recover: true });
+      if (r.attempt !== 'older') return { kind: 'created', request: r, path: r.path };
+      inspections++;
+      return { kind, path: r.path, request: r, error: 'uncertain operation' };
+    };
+    const prepare = f.git.prepare;
+    f.git.prepare = async options => { prepared++; assert.equal(clears, 1); return prepare(options); };
+    await fill(f.model); assert.equal(inspections, 0);
+    await f.model.submit();
+    assert.equal(inspections, 1); assert.equal(clears, kind === 'partial' ? 0 : 1);
+    assert.equal(prepared, kind === 'partial' ? 0 : 1);
+    assert.equal(f.mutations, kind === 'partial' ? 0 : 1);
+    assert.equal(f.model.phase, kind === 'partial' ? 'editing' : 'complete');
   }
+});
+
+test('a prepared existing-checkout destination is checked when it differs from the initial preview', async () => {
+  const f = setup();
+  const pending = { ...f.request, project: b, name: 'other', path: '/newly-observed/checkout', attempt: 'older' };
+  let text = JSON.stringify(pending);
+  f.model.journal = createJournalStore(async () => text, async (_path, next, expected) => {
+    assert.equal(expected, text); text = next;
+  }, '/operation.json');
+  f.git.prepare = async () => ({ ...f.request, path: pending.path, reuse: true });
+  f.git.inspect = async request => ({ kind: 'partial', request, path: request.path, error: 'destination still uncertain' });
+  await fill(f.model); f.model.setAction('existing');
+  await f.model.submit();
+  assert.match(f.model.error, /destination still uncertain/);
+  assert.equal(f.mutations, 0); assert.equal(text, JSON.stringify(pending));
 });
 
 test('invalid config, failed preparation and journal failure block creation', async () => {
@@ -288,12 +337,12 @@ test('open-only retry refuses a checkout that changed after its first inspection
 
 test('journal-clear failure preserves recovery and prevents app opening', async () => {
   const f = setup(); await fill(f.model);
-  const save = f.model.journal.save;
-  f.model.journal.save = async request => { if (request === null) throw new Error('cannot clear journal'); await save(request); };
+  const clear = f.model.journal.clear;
+  f.model.journal.clear = async () => { throw new Error('cannot clear journal'); };
   await f.model.submit();
   assert.equal(f.model.phase, 'recover'); assert.equal(f.opens, 0); assert.equal(f.mutations, 1);
   assert.equal(f.saved.path, f.request.path);
-  f.model.journal.save = save; await f.model.openCreated();
+  f.model.journal.clear = clear; await f.model.openCreated();
   assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
   assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
 });
@@ -351,13 +400,15 @@ test('incomplete recovery stays on its saved machine when browsing other machine
   }, '/operation.json');
   await f.model.refresh();
   assert.equal(f.model.machine, 'devbox'); assert.deepEqual(connected, ['devbox']);
-  assert.equal(f.model.phase, 'partial'); assert.equal(await f.model.selectMachine(null), true);
+  assert.equal(f.model.phase, 'editing'); assert.equal(await f.model.selectMachine(null), true);
   await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('local');
   assert.equal(f.model.canCreate, true);
   await f.model.submit(); assert.equal(f.mutations, 1);
   assert.deepEqual(JSON.parse(text).operations, [request]);
-  await f.model.selectMachine('devbox'); assert.equal(f.model.phase, 'partial');
-  await f.model.openCreated(); assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
+  await f.model.selectMachine('devbox'); assert.equal(f.model.phase, 'editing');
+  await f.model.selectProject(a); f.model.selectRef(ref); f.model.setName('feature');
+  await f.model.submit();
+  assert.match(f.model.error, /unresolved/); assert.equal(f.opens, 1); assert.equal(f.mutations, 1);
 });
 
 
@@ -405,8 +456,7 @@ test('known pre-creation failures clear recovery while unknown creation outcomes
 
 test('a failed recovery-record clear keeps known pre-creation failures guarded', async () => {
   const f = setup({ git: { create: async () => { throw Object.assign(new Error('core unavailable'), { kind: 'core_unavailable' }); } } });
-  const save = f.model.journal.save;
-  f.model.journal.save = async request => { if (request === null) throw new Error('record changed'); await save(request); };
+  f.model.journal.clear = async () => { throw new Error('record changed'); };
   await fill(f.model); await f.model.submit();
   assert.equal(f.model.phase, 'partial'); assert(f.saved); assert(f.model.pending);
   assert.match(f.model.error, /record changed/); assert.equal(f.opens, 0);

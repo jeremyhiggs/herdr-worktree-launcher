@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createJournalStore } from '../mods/worktree-launcher/journal.js';
 
-const request = machine => ({ machine, project: { root: '/projects' }, path: '/worktree', attempt: `${machine}-attempt` });
+const request = (machine, name = 'feature') => ({ machine, project: { id: '/projects/repo/.git', root: '/projects' }, name, path: `/worktrees/${name}`, attempt: `${machine}-${name}-attempt` });
 function setup(initial = null) {
   let text = initial;
   const read = async () => text;
@@ -13,42 +13,54 @@ function setup(initial = null) {
   return { store: () => createJournalStore(read, write, '/operation.json'), get text() { return text; } };
 }
 
-test('legacy recovery migrates on save and local and remote operations clear independently', async () => {
+test('legacy recovery migrates without losing independent worktrees on the same machine', async () => {
   const remote = request('devbox'); delete remote.attempt;
   const f = setup(JSON.stringify(remote)), store = f.store();
-  assert.equal(await store.load(null), null);
+  assert.deepEqual(await store.load(null), []);
   assert.equal(f.text, JSON.stringify(remote), 'Reading must preserve the legacy record');
-  const local = request(null);
-  await store.save(local, null);
-  assert.deepEqual(await store.load('devbox'), remote);
-  await store.save(null, 'devbox');
-  assert.deepEqual(await store.load(null), local);
-  await store.save(null, null);
-  assert.equal(await store.load('devbox'), null);
-  assert.equal(await store.load(null), null);
+  const local = request(null), unrelated = request('devbox', 'other');
+  await store.save(local); await store.save(unrelated);
+  assert.deepEqual(await store.load('devbox'), [remote, unrelated]);
+  await store.clear(remote);
+  assert.deepEqual(await store.load('devbox'), [unrelated]);
+  assert.deepEqual(await store.load(null), [local]);
+  await store.clear(local);
+  assert.deepEqual(await store.load(null), []);
+  assert.deepEqual(await store.load('devbox'), [unrelated]);
 });
 
-test('an older launcher cannot overwrite or clear a newer recovery record', async () => {
+test('an older launcher cannot clear a replacement, but can save unrelated work without losing it', async () => {
   const f = setup(), older = f.store(), newer = f.store();
-  await older.load(null); await newer.load(null);
-  const local = request(null);
-  await newer.save(local, null);
-  await assert.rejects(older.save(null, null), /stale snapshot/);
-  await assert.rejects(older.save(request('devbox'), 'devbox'), /stale snapshot/);
-  assert.deepEqual(await newer.load(null), local);
-  await older.load('devbox');
-  await older.save(request('devbox'), 'devbox');
-  assert.deepEqual(await newer.load(null), local);
+  const original = request(null);
+  await older.save(original);
+  const [stale] = await older.load(null);
+  await newer.clear(original);
+  const replacement = { ...original, attempt: 'newer' };
+  await newer.save(replacement);
+  await assert.rejects(older.clear(stale), /changed/);
+  const unrelated = request(null, 'other');
+  await older.save(unrelated);
+  assert.deepEqual(await newer.load(null), [replacement, unrelated]);
+  await assert.rejects(older.save({ ...replacement, path: '/another/path' }), /conflicting/);
+  await assert.rejects(older.save({ ...request(null, 'third'), project: { id: '/different/repo/.git' }, path: replacement.path }), /conflicting/);
 });
 
-test('malformed recovery and cross-machine writes are refused without replacing records', async () => {
-  for (const text of ['{broken', '[]', '{"version":2,"operations":{}}', JSON.stringify({ version: 2, operations: [request(null), request(null)] })]) {
+test('native stale-write protection preserves records added during a journal write', async () => {
+  const original = request(null), newer = request(null, 'other');
+  let text = JSON.stringify({ version: 2, operations: [original] });
+  const store = createJournalStore(async () => text, async (_path, _next, expected) => {
+    text = JSON.stringify({ version: 2, operations: [original, newer] });
+    if (text !== expected) throw new Error('stale snapshot');
+  }, '/operation.json');
+  await assert.rejects(store.clear(original), /stale snapshot/);
+  assert.deepEqual(await store.load(null), [original, newer]);
+});
+
+test('malformed recovery is refused without replacing records', async () => {
+  for (const text of ['{broken', '[]', '{"version":2,"operations":{}}', '{"version":2,"operations":[null]}']) {
     const f = setup(text);
     await assert.rejects(f.store().load(null), /unreadable/);
+    await assert.rejects(f.store().save(request(null)), /unreadable/);
     assert.equal(f.text, text);
   }
-  const f = setup(), store = f.store();
-  await store.load(null);
-  await assert.rejects(store.save(request('devbox'), null), /another machine/);
-  assert.equal(f.text, null);
 });

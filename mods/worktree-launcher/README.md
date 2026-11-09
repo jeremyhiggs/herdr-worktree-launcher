@@ -112,9 +112,9 @@ If projects are missing, check the machine and root, then select **Refresh**. Fo
 
 If Git succeeds but app opening fails, select **Open created worktree**. This retries opening without repeating Git creation.
 
-Operation records live in `<app-home>/data/worktree-launcher-operation.json`, separated by machine. Each record is cleared once Git creation is verified, before session opening. An opening failure offers an in-window retry; the next launcher run starts fresh. Recovery also clears a record when Git confirms no artifacts were created.
+Operation records live in `<app-home>/data/worktree-launcher-operation.json`. Each record identifies its machine, repository, branch, and destination. Each record is cleared once Git creation is verified, before session opening. An opening failure offers an in-window retry; the next launcher run starts fresh. Recovery also clears a record when Git confirms no artifacts were created.
 
-An incomplete Git operation blocks new creation only on its original machine. Other machines remain usable, and recovery never changes the selected machine. The CLI stores no recovery state between invocations.
+Recovery runs when you select **Create** or **Open worktree**, and inspects only conflicting records. A conflict means the same destination, or the same branch in the same Git repository, on the same machine. Other repositories and unrelated worktrees remain usable, even on that machine. Recovery never changes the selected machine. The CLI stores no recovery state between invocations.
 
 For an incomplete operation:
 
@@ -122,7 +122,7 @@ For an incomplete operation:
 2. On the reported machine, inspect the project with `git worktree list --porcelain` and `git branch -vv`.
 3. Repair any incomplete artifact manually.
 4. Back up the operation record after you understand the Git outcome.
-5. Remove only the repaired machine's entry from `operations`. Preserve entries for other machines. For a legacy single-operation record, move the file aside instead.
+5. Remove only the repaired operation from `operations`, identified by machine, repository, branch, and destination. Preserve all other entries. For a legacy single-operation record, move the file aside instead.
 6. Open the launcher again.
 
 The CLI uses Worktrunk for creation and skips Worktrunk project hooks. Run trusted setup manually. Missing `wt` or Herdr context stops creation.
