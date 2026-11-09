@@ -28,6 +28,8 @@ Packaging supports `--output DIRECTORY`. It includes only distribution files; pe
 
 CI runs lint on Linux and build/tests on Linux and macOS for pushes, pull requests, and manual runs. The Packages workflow cross-compiles macOS and Linux binaries for amd64 and arm64, then uploads the archives and checksums as a workflow artifact. It does not publish a GitHub release.
 
+For the tested worktree cases and CI limits, see the [scenario matrix](validation/worktree-launcher.md#automated-worktree-scenarios).
+
 For package contents and installation, see [Install a package](packages.md).
 
 Tests use disposable Git repositories, real Worktrunk, and core/app protocol fixtures. They need no live Herdr instance. Native mod loading remains a separate macOS check:

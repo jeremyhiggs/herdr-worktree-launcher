@@ -297,6 +297,8 @@ See [settings and troubleshooting](docs/worktree-launcher.md) for manual install
 
 For contributors, see [development](docs/development.md) and the [validation report](docs/validation/worktree-launcher.md).
 
+The [scenario matrix](docs/validation/worktree-launcher.md#automated-worktree-scenarios) lists worktree and recovery tests, CI coverage, and separate native checks.
+
 Build, lint, test, and package locally with `scripts/build-cli.sh`, `scripts/lint.sh`, `scripts/test.sh`, and `scripts/package.sh`. GitHub workflows run these scripts on pushes and pull requests. The Packages workflow uploads CLI and mod archives with checksums; see [package installation](docs/packages.md).
 
 Screenshots use disposable sample projects in a separate Herdr installation. Only agents detected in that installation appear.
