@@ -1,7 +1,7 @@
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar, TextView } from 'gpui-base';
-import { exec, home, appHome, readTextFile, writeTextFile, spaces, panes, machines, knownAgents, pickFolder, run, theme, props, closeOverlay } from 'herdr';
-import { connectGit } from './git.js';
+import { exec, appHome, readTextFile, writeTextFile, spaces, panes, machines, knownAgents, pickFolder, run, theme, props, closeOverlay } from 'herdr';
+import { connectCLI, listCLIPrograms } from './cli.js';
 import { createConfigStore } from './config.js';
 import { WorktreeModel, openCheckout } from './model.js';
 
@@ -33,7 +33,7 @@ export default class WorktreeLauncher extends View {
       this.inputs[field] = input;
       input.on('change', (_e, cx) => {
         if (this.syncing) return;
-        if (field === 'name') this.model.setName(input.value());
+        if (field === 'name') { this.model.setName(input.value()); this.preview(cx); }
         else if (field === 'root') { this.openField = null; this.rootRevision++; this.rootDraft = true; }
         else { this.field = field; this.openField = field; this.filters[field] = input.value(); this.index = 0; this.scroll.scroll_to_item(0); }
         cx.notify();
@@ -47,9 +47,8 @@ export default class WorktreeLauncher extends View {
     let snapshot = null;
     this.model = new WorktreeModel({
       machine: spaces().find(s => s.active)?.machine ?? null,
-      connect: machine => connectGit(exec, home(), machine),
-      listAgents: machine => knownAgents({ on: machine }),
-      terminals: () => panes().map(pane => pane.terminal).filter(Boolean),
+      connect: machine => connectCLI(exec, machine),
+      listAgents: async machine => listCLIPrograms(exec, machine, await knownAgents({ on: machine }).catch(() => [])),
       config: machine => config.get(machine),
       saveRoot: (machine, root) => config.set(machine, root),
       journal: {
@@ -90,11 +89,20 @@ export default class WorktreeLauncher extends View {
       });
       try {
         const changed = () => { if (!this.model.closed) { this.syncContext(); cx.notify(); } };
-        const pending = work(open, changed); if (this.model.busy) this.openField = null; cx.notify(); await pending;
+        const pending = work(open, changed, ms => new Promise(resolve => cx.timer.after(ms, resolve))); if (this.model.busy) this.openField = null; cx.notify(); await pending;
         this.syncContext();
         if (this.model.phase === 'complete') closeOverlay(props().overlay);
         else cx.notify();
       } catch (e) { this.model.error = String(e); cx.notify(); }
+    });
+  }
+
+  preview(cx) {
+    const revision = this.previewRevision = (this.previewRevision ?? 0) + 1;
+    this.task(cx, async (_open, _changed, pause) => {
+      await pause(150);
+      if (this.model.closed || revision !== this.previewRevision) return;
+      await this.model.preview();
     });
   }
 
@@ -230,7 +238,7 @@ export default class WorktreeLauncher extends View {
       });
     } else {
       if (this.model.action === 'existing' && row.reason) return;
-      this.model.selectRef(row);
+      this.model.selectRef(row); this.preview(cx);
       this.showChoice('ref', row.label);
       this.openField = null;
       if (this.model.action === 'new') this.inputs.name.focus();

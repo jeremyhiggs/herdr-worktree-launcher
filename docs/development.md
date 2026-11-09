@@ -4,7 +4,7 @@ For user instructions, see the [README](../README.md). The [validation report](v
 
 ## Set up
 
-Use Node 24 or newer and pnpm 11.x. The repository pins pnpm 11.28.6.
+Use Go and Worktrunk from `mise.toml`, plus Node 24 or newer and pnpm 11.x. The repository pins pnpm 11.28.6.
 
 With nvm, run:
 
@@ -16,6 +16,7 @@ pnpm install --frozen-lockfile
 ## Check changes
 
 ```sh
+go test ./...
 pnpm test
 herdr-app check mods/worktree-launcher
 ```
@@ -27,6 +28,7 @@ No separate lint or typecheck command is configured.
 ## Open an isolated test app
 
 ```sh
+pnpm run build:cli
 pnpm run test:app
 ```
 
@@ -92,8 +94,10 @@ Review every image before committing. Check the form, menu contents, sidebar, te
 | --- | --- |
 | `mods/worktree-launcher/main.js` | Native overlay and keyboard controls |
 | `mods/worktree-launcher/model.js` | Form state, opening, and recovery |
-| `mods/worktree-launcher/git.js` | Machine routing, discovery, and Git operations |
-| `mods/worktree-launcher/project-name.js` | Bounded root manifest reads and project-name extraction |
+| `mods/worktree-launcher/cli.js` | JSON client; UI routing to the selected machine |
+| `cmd/herdr-worktree-launcher/` | Go CLI, discovery, worktrees, naming, and core sessions |
+| `scripts/build-cli.sh` | Build the standalone Go CLI |
+| `scripts/install-cli.sh` | Install the standalone binary, or build it with Go first |
 | `mods/worktree-launcher/config.js` | Saved project roots |
 | `scripts/install-mod.mjs` | Copy, native check, and shortcut merge |
 | `scripts/test-app.mjs` | Interactive sample app |
@@ -112,3 +116,21 @@ The installer distributes the mod's README with its code. Keep that guide self-c
 7. Review the diff and scan for private data before committing.
 
 Keep installation, local commits, publishing, and release tagging as separate steps.
+
+## CLI builds
+
+The CLI uses the Go standard library and has no external Go modules. The desktop mod is a JSON client for this executable.
+
+Run `mise install` for the pinned Go and Worktrunk versions, then `./scripts/build-cli.sh`. The output is `dist/herdr-worktree-launcher`. It needs no Go or Node runtime. Runtime dependencies are `git`, `wt`, and `hc`.
+
+For another platform, set Go's build variables:
+
+```sh
+GOOS=linux GOARCH=amd64 ./scripts/build-cli.sh --output dist/herdr-worktree-launcher-linux-amd64
+```
+
+Build outputs are ignored. Node and pnpm remain development tools for the UI tests and mod installation. CLI tests build the actual Go executable and use real Git/Worktrunk with a core protocol fixture. Go tests cover Git safety and core session matching.
+
+`HC_SOCKET` or `HC_SESSION` must identify a running core before creation or opening. The launcher never starts a core. Tests use isolated environments. Worktrunk project hooks are disabled for backend calls.
+
+Use `herdr-worktree-launcher --skill` for JSON operations and response shapes. API requests use one argument containing JSON, without shell interpolation. The UI only selects and focuses the returned terminal; it does not create sessions itself.

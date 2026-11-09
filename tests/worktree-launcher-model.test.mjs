@@ -2,15 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WorktreeModel, openCheckout as openCheckoutWithGit } from '../mods/worktree-launcher/model.js';
 
-// Opening fixtures model the batched adapter; real command batching is covered by Git tests.
-const openCheckout = (request, git, app) => openCheckoutWithGit(request, {
-  identities: async paths => {
-    const result = new Map();
-    await Promise.all(paths.map(async path => { try { result.set(path, await git.identity(path)); } catch {} }));
-    return result;
-  },
-  ...git,
-}, app);
+const openCheckout = openCheckoutWithGit;
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const noTimeout = () => ({ promise: new Promise(() => {}), cancel: () => {} });
@@ -174,15 +166,15 @@ test('an existing-checkout session preserves its folder and program through open
   f.git.create = async request => ({ kind: 'created', path: request.path, request });
   await f.model.submit(async request => {
     assert.equal(request.path, checkout); assert.equal(request.launch.key, 'codex');
-    assert.deepEqual(request.previousTerminals, ['old-terminal']);
+    assert(request.attempt);
     assert.equal(f.saved, null);
     throw new Error('opening failed');
   });
   assert.equal(f.model.phase, 'recover'); assert.equal(f.saved, null);
-  assert.deepEqual(f.model.result.request.previousTerminals, ['old-terminal']);
+  const attempt = f.model.result.request.attempt;
   f.model.terminals = () => ['old-terminal', 'new-terminal'];
   assert.equal(f.model.reusing, true); assert.equal(f.model.path, checkout);
-  await f.model.openCreated(async request => { assert.equal(request.path, checkout); assert.deepEqual(request.previousTerminals, ['old-terminal']); });
+  await f.model.openCreated(async request => { assert.equal(request.path, checkout); assert.equal(request.attempt, attempt); });
   assert.equal(f.model.phase, 'complete'); assert.equal(f.saved, null);
 });
 
@@ -257,62 +249,6 @@ test('reopening reconciles journal before allowing mutation, including incomplet
   }
 });
 
-test('opening among unrelated remote spaces batches identities once and reaches the target within its deadline', async () => {
-  let now = 0, batches = 0; const calls = [];
-  const spaces = [{ id: 'project', machine: 'devbox', folder: '/project', tabs: [{ id: 'project' }] },
-    ...Array.from({ length: 60 }, (_, i) => ({ id: `s${i}`, machine: 'devbox', folder: `/other/${i}`, tabs: [{ id: `s${i}` }] }))];
-  const state = { spaces, panes: spaces.map(s => ({ pane: s.id, tab: s.id, terminal: s.id, cwd: s.folder, program: { shell: true } })) };
-  const identity = path => ({ id: ['/project', '/worktree'].includes(path) ? 'A' : 'other', top: path });
-  await openCheckout({ machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } }, {
-    machine: 'devbox', identity: async path => { now += 250; return identity(path); },
-    identities: async paths => { now += 250; batches++; return new Map(paths.map(path => [path, identity(path)])); },
-  }, {
-    snapshot: () => state, now: () => now, timeout: noTimeout, pause: async () => { now += 250; },
-    run: (command, args) => {
-      calls.push([command, args]);
-      if (command === 'space.new') {
-        state.spaces.push({ id: 'target', machine: 'devbox', folder: args.folder, tabs: [{ id: 'target' }] });
-        state.panes.push({ pane: 'target', tab: 'target', terminal: 'target', cwd: args.folder, program: { shell: true } });
-      }
-      if (command === 'space.select') state.spaces.forEach(space => { space.active = space.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(pane => { pane.focused = pane.pane === args.pane; });
-    },
-  });
-  assert.equal(batches, 1); assert(now < 2000);
-  assert.equal(state.panes.find(pane => pane.focused).cwd, '/worktree');
-  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/worktree', machine: 'devbox' }]]);
-});
-
-test('cached checkout matches are verified live before any focus command', async () => {
-  const calls = [], request = { path: '/worktree', project: { id: 'A', path: '/project' } };
-  let targetChecks = 0;
-  await assert.rejects(openCheckout(request, {
-    identity: async path => ({ top: path, id: path === '/worktree' && ++targetChecks > 1 ? 'different-repository' : 'A' }),
-  }, {
-    snapshot: () => ({ spaces: ['/project', '/worktree'].map(path => ({ id: path, folder: path, tabs: [{ id: path }] })),
-      panes: ['/project', '/worktree'].map(path => ({ pane: path, tab: path, terminal: path, cwd: path, program: { shell: true } })) }),
-    now: () => 0, timeout: noTimeout, pause: async () => {}, run: (...args) => calls.push(args),
-  }), /identity changed before focus/);
-  assert.deepEqual(calls, []);
-});
-
-test('a known matching pane skips unrelated identity scans', async () => {
-  const state = {
-    spaces: ['/project', '/worktree', '/unrelated'].map(path => ({ id: path, folder: path, tabs: [{ id: path }] })),
-    panes: ['/project', '/worktree', '/unrelated'].map(path => ({ pane: path, tab: path, terminal: path, cwd: path, program: { shell: true } })),
-  };
-  await openCheckout({ path: '/worktree', project: { id: 'A', path: '/project' } }, {
-    identity: async path => ({ id: 'A', top: path }), identities: async () => { throw new Error('Unrelated scan should be skipped'); },
-  }, {
-    snapshot: () => state, now: () => 0, timeout: noTimeout, pause: async () => {},
-    run: (command, args) => {
-      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
-    },
-  });
-  assert.equal(state.panes.find(pane => pane.focused).cwd, '/worktree');
-});
-
 test('invalid config, failed preparation and journal failure block creation', async () => {
   const invalid = setup({ config: async () => { throw new Error('Malformed config.json'); } });
   await invalid.model.refresh(); assert.match(invalid.model.error, /Malformed/); assert.equal(invalid.model.projects.length, 0);
@@ -322,160 +258,6 @@ test('invalid config, failed preparation and journal failure block creation', as
     else f.model.journal.save = async () => { throw new Error('journal unavailable'); };
     await f.model.submit(); assert.equal(f.mutations, 0); assert.equal(f.model.phase, 'editing');
   }
-});
-
-test('space matching uses live checkout identity, ignores remote and nested repos, and focuses matching shell', async () => {
-  const request = { path: '/worktree', project: { id: 'A', path: '/project' } };
-  const calls = [];
-  const state = {
-    spaces: [{ id: 'project', machine: null, tabs: [{ id: 'project-tab' }] }, { id: 'nested', machine: null, tabs: [{ id: 'nested-tab' }] }, { id: 'remote', machine: 'remote', tabs: [{ id: 'remote-tab' }] }, { id: 'correct', machine: null, tabs: [{ id: 'correct-tab' }] }],
-    panes: [{ pane: 'project-pane', tab: 'project-tab', cwd: '/project/subdir', terminal: 'tp', program: { agent: true } }, { pane: 'n', tab: 'nested-tab', cwd: '/worktree/nested', terminal: 'tn', program: { shell: true } }, { pane: 'r', tab: 'remote-tab', cwd: '/worktree', terminal: 'tr', program: { shell: true } }, { pane: 'c', tab: 'correct-tab', cwd: '/worktree/subdir', terminal: 'tc', program: { shell: true }, focused: false }],
-  };
-  const git = { identity: async p => ({ top: p.startsWith('/project') ? '/project' : p.includes('nested') ? '/worktree/nested' : '/worktree', id: p.includes('nested') ? 'B' : 'A' }) };
-  await openCheckout(request, git, { snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0, run: (name, args) => {
-    calls.push([name, args]);
-    if (name === 'space.select') state.spaces.find(s => s.id === args.id).active = true;
-    if (name === 'pane.focus') state.panes.find(p => p.pane === args.pane).focused = true;
-  } });
-  assert(!calls.some(([n]) => n === 'space.new')); assert(calls.some(([n, a]) => n === 'space.select' && a.id === 'correct'));
-});
-
-test('opening creates and observes the project space before the worktree space', async () => {
-  const calls = [], state = { spaces: [], panes: [] };
-  const request = { path: '/worktree', project: { id: 'A', path: '/project' } };
-  await openCheckout(request, { identity: async path => ({ id: 'A', top: path }) }, {
-    snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
-    run: (command, args) => {
-      calls.push([command, args]);
-      if (command === 'space.new') {
-        const id = String(state.spaces.length);
-        state.spaces.push({ id, tabs: [{ id }], machine: null, active: false });
-        state.panes.push({ pane: id, tab: id, terminal: id, cwd: args.folder, program: { shell: true }, focused: false });
-      }
-      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
-    },
-  });
-  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [['space.new', { folder: '/project', machine: '' }], ['space.new', { folder: '/worktree', machine: '' }]]);
-  assert.equal(state.panes.find(p => p.focused).cwd, '/worktree');
-});
-
-test('selected agents launch in the worktree on the correct machine and reuse their existing pane on retry', async () => {
-  for (const machine of [null, 'devbox']) for (const existing of [false, true]) {
-    const prefix = machine ? 'devbox/' : '';
-    const state = { spaces: [], panes: [] }, calls = [];
-    function addPane(space, folder, program) {
-      const tab = `${prefix}tab-${state.panes.length}`, pane = `${prefix}pane-${state.panes.length}`;
-      space.tabs.push({ id: tab });
-      state.panes.push({ pane, tab, cwd: folder, terminal: pane, program, focused: false });
-    }
-    const primary = { id: `${prefix}primary`, machine, folder: '/project', tabs: [] };
-    state.spaces.push(primary); addPane(primary, '/project', { shell: true });
-    if (existing) {
-      const worktree = { id: `${prefix}worktree`, machine, folder: '/worktree', tabs: [] };
-      state.spaces.push(worktree); addPane(worktree, '/worktree', { shell: true });
-    }
-    let time = 0;
-    const request = { machine, path: '/worktree', project: { id: 'A', path: '/project' }, launch: { key: 'codex', label: 'Codex', argv: ['custom-codex', '--config', 'value with spaces'] } };
-    const app = { snapshot: () => state, now: () => time, pause: async () => { time += 250; }, timeout: noTimeout,
-      run: (command, args) => {
-        calls.push([command, args]);
-        if (command === 'space.new') {
-          const space = { id: `${prefix}worktree`, machine: args.machine || null, folder: args.folder, tabs: [] };
-          state.spaces.push(space); addPane(space, args.folder, { key: 'codex', agent: true });
-        }
-        if (command === 'tab.new') addPane(state.spaces.find(space => space.id === args.space), args.folder, { key: 'codex', agent: true });
-        if (command === 'space.select') state.spaces.forEach(space => { space.active = space.id === args.id; });
-        if (command === 'pane.focus') state.panes.forEach(pane => { pane.focused = pane.pane === args.pane; });
-      },
-    };
-    const git = { machine, identity: async path => ({ id: 'A', top: path }) };
-    await openCheckout(request, git, app);
-    const launches = calls.filter(([command]) => ['space.new', 'tab.new'].includes(command));
-    assert.equal(launches.length, 1); assert.equal(launches[0][0], existing ? 'tab.new' : 'space.new');
-    assert.deepEqual(launches[0][1].argv, request.launch.argv); assert.equal(launches[0][1].folder, '/worktree');
-    if (existing) assert.equal(launches[0][1].space, `${prefix}worktree`);
-    else assert.equal(launches[0][1].machine, machine ?? '');
-    assert.equal(state.panes.find(pane => pane.focused).program.key, 'codex');
-    await openCheckout(request, git, app);
-    assert.equal(calls.filter(([command]) => ['space.new', 'tab.new'].includes(command)).length, 1);
-  }
-});
-
-test('each existing-worktree launch adds a fresh tab in the detected space while retries reuse only the new terminal', async () => {
-  for (const machine of [null, 'devbox']) for (const key of ['shell', 'codex']) {
-    const prefix = machine ? 'devbox/' : '', calls = [], state = { spaces: [], panes: [] };
-    function addPane(space, cwd, program) {
-      const id = `${prefix}pane-${state.panes.length}`;
-      space.tabs.push({ id }); state.panes.push({ pane: id, tab: id, terminal: id, cwd, program, focused: false });
-    }
-    const primary = { id: `${prefix}project`, folder: '/project', machine, tabs: [] };
-    const worktree = { id: `${prefix}worktree`, folder: '/worktree', machine, tabs: [] };
-    state.spaces.push(primary, worktree); addPane(primary, '/project', { shell: true });
-    addPane(worktree, '/unrelated', { shell: true });
-    const program = key === 'shell' ? { shell: true } : { key, agent: true };
-    addPane(worktree, key === 'shell' ? '/elsewhere' : '/worktree', program);
-    const request = { machine, reuse: true, path: '/worktree', project: { id: 'A', path: '/project' }, launch: { key, label: key, argv: key === 'shell' ? null : ['custom-codex'] }, previousTerminals: state.panes.map(pane => pane.terminal) };
-    let time = 0, pending;
-    const app = { snapshot: () => state, now: () => time, timeout: noTimeout,
-      pause: async () => { time += 250; if (pending) { addPane(worktree, pending.folder, program); pending = null; } },
-      run: (command, args) => {
-        calls.push([command, args]);
-        if (command === 'tab.new') pending = args;
-        if (command === 'space.select') state.spaces.forEach(space => { space.active = space.id === args.id; });
-        if (command === 'pane.focus') state.panes.forEach(pane => { pane.focused = pane.pane === args.pane; });
-      },
-    };
-    const git = { machine, identity: async path => ({ id: ['/unrelated', '/elsewhere'].includes(path) ? 'B' : 'A', top: path }) };
-    await openCheckout(request, git, app);
-    const tabs = () => calls.filter(([command]) => command === 'tab.new');
-    assert.equal(tabs().length, 1); assert.equal(tabs()[0][1].space, worktree.id);
-    assert.equal(tabs()[0][1].folder, '/worktree'); assert(!calls.some(([command]) => command === 'space.new'));
-    assert(!request.previousTerminals.includes(state.panes.find(pane => pane.focused).terminal));
-    if (key === 'codex') assert.deepEqual(tabs()[0][1].argv, ['custom-codex']);
-    await openCheckout(JSON.parse(JSON.stringify(request)), git, app);
-    assert.equal(tabs().length, 1);
-    await openCheckout({ ...request, previousTerminals: state.panes.map(pane => pane.terminal) }, git, app);
-    assert.equal(tabs().length, 2);
-  }
-});
-
-test('an unobserved project space prevents opening an ungrouped worktree space', async () => {
-  let time = 0; const calls = [];
-  await assert.rejects(openCheckout({ path: '/worktree', project: { id: 'A', path: '/project' } }, { identity: async path => ({ id: 'A', top: path }) }, {
-    snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => time, pause: async () => { time += 1000; }, timeout: noTimeout,
-  }), /unconfirmed/i);
-  assert.deepEqual(calls, [['space.new', { folder: '/project', machine: '' }]]);
-});
-
-test('an existing project space with no terminal cwd is reused by its folder', async () => {
-  const created = [], state = { spaces: [{ id: 'project', folder: '/project', machine: null, tabs: [] }], panes: [] };
-  await openCheckout({ path: '/worktree', project: { id: 'A', path: '/project' } }, { identity: async path => ({ id: 'A', top: path }) }, {
-    snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
-    run: (command, args) => {
-      if (command === 'space.new') {
-        created.push(args.folder); const id = String(state.spaces.length);
-        state.spaces.push({ id, folder: args.folder, machine: null, tabs: [{ id }] });
-        state.panes.push({ pane: id, tab: id, terminal: id, cwd: args.folder, program: { shell: true } });
-      }
-      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
-    },
-  });
-  assert.deepEqual(created, ['/worktree']);
-});
-
-test('opening expires during a slow identity probe and never sends a late app command', { timeout: 1000 }, async () => {
-  const probe = deferred(), timeout = deferred(); const calls = [];
-  const operation = openCheckout({ path: '/worktree', project: { id: 'A' } }, { identity: () => probe.promise }, {
-    snapshot: () => ({ spaces: [], panes: [] }), run: (...args) => calls.push(args), now: () => 0,
-    pause: async () => {}, timeout: () => ({ promise: timeout.promise, cancel: () => {} }),
-  });
-  timeout.resolve();
-  await assert.rejects(operation, /unconfirmed/i);
-  probe.resolve({ id: 'A', top: '/worktree' });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(calls, []);
 });
 
 test('open-only retry refuses a checkout that changed after its first inspection', async () => {
@@ -558,45 +340,35 @@ test('incomplete recovery stays on its saved machine when browsing other machine
   await f.model.openCreated(); assert.equal(f.opens, 0); assert.equal(f.mutations, 0);
 });
 
-test('remote space matching ignores identical local paths and uses namespaced remote IDs', async () => {
-  const calls = [], state = { spaces: [], panes: [] };
-  for (const machine of [null, 'other', 'devbox']) for (const path of ['/project', '/worktree']) {
-    const id = `${machine ?? 'local'}${path}`;
-    state.spaces.push({ id, machine, folder: path, tabs: [{ id }], active: false });
-    state.panes.push({ pane: id, tab: id, terminal: id, cwd: path, program: { shell: true }, focused: false });
+
+test('opening delegates session creation and focuses only the returned terminal on the selected machine', async () => {
+  for (const machine of [null, 'devbox']) {
+    const terminal = machine ? 'devbox/t42' : 't42', calls = [];
+    const state = { spaces: [{ id: 'space', machine, tabs: [{ id: 'tab' }] }], panes: [{ pane: 'pane', tab: 'tab', terminal }] };
+    const request = { machine, path: '/worktree' };
+    const backend = { machine, open: async value => { assert.equal(value, request); return { terminal: 't42' }; } };
+    await openCheckout(request, backend, {
+      snapshot: () => state, now: () => 0, timeout: noTimeout, pause: async () => {},
+      run: (command, args) => { calls.push(command); if (command === 'space.select') state.spaces[0].active = true; if (command === 'pane.focus') state.panes[0].focused = true; },
+    });
+    assert.deepEqual(calls, ['space.select', 'tab.select', 'pane.focus']);
   }
-  await openCheckout({ machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } }, { machine: 'devbox', identity: async path => ({ id: 'A', top: path }) }, {
-    snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
-    run: (command, args) => {
-      calls.push([command, args]);
-      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
-    },
-  });
-  assert(!calls.some(([command]) => command === 'space.new'));
-  assert(calls.some(([command, args]) => command === 'space.select' && args.id === 'devbox/worktree'));
-  assert(!state.spaces.some(s => s.machine !== 'devbox' && s.active));
 });
 
-test('remote opening sends the machine on every new project/worktree space and rejects a wrong adapter', async () => {
-  const calls = [], state = { spaces: [], panes: [] };
-  const request = { machine: 'devbox', path: '/worktree', project: { id: 'A', path: '/project' } };
-  const app = { snapshot: () => state, pause: async () => {}, timeout: noTimeout, now: () => 0,
-    run: (command, args) => {
-      calls.push([command, args]);
-      if (command === 'space.new') {
-        const id = `devbox/${state.spaces.length}`;
-        state.spaces.push({ id, machine: args.machine, folder: args.folder, tabs: [{ id }] });
-        state.panes.push({ pane: id, tab: id, terminal: id, cwd: args.folder, program: { shell: true } });
-      }
-      if (command === 'space.select') state.spaces.forEach(s => { s.active = s.id === args.id; });
-      if (command === 'pane.focus') state.panes.forEach(p => { p.focused = p.pane === args.pane; });
-    },
-  };
+test('opening never sends late focus commands after its deadline or uses another machine', async () => {
+  const gate = deferred(), timer = deferred(), calls = [];
+  const app = { now: () => 0, timeout: () => ({ promise: timer.promise, cancel() {} }), run: (...args) => calls.push(args) };
+  const request = { machine: 'devbox', path: '/worktree' };
   await assert.rejects(openCheckout(request, { machine: null }, app), /another machine/);
-  assert.deepEqual(calls, []);
-  await openCheckout(request, { machine: 'devbox', identity: async path => ({ id: 'A', top: path }) }, app);
-  assert.deepEqual(calls.filter(([command]) => command === 'space.new'), [
-    ['space.new', { folder: '/project', machine: 'devbox' }], ['space.new', { folder: '/worktree', machine: 'devbox' }],
-  ]);
+  const pending = openCheckout(request, { machine: 'devbox', open: () => gate.promise }, app);
+  timer.resolve(); await assert.rejects(pending, /unconfirmed/);
+  gate.resolve({ terminal: 't42' }); await Promise.resolve(); assert.deepEqual(calls, []);
+});
+
+test('destination previews discard stale responses', async () => {
+  const gate = deferred(); const f = setup(); await fill(f.model);
+  f.git.destination = () => gate.promise;
+  const preview = f.model.preview(); f.model.setName('changed');
+  gate.resolve('/old'); await preview; assert.equal(f.model.path, '');
+  f.git.destination = async () => '/new'; await f.model.preview(); assert.equal(f.model.path, '/new');
 });

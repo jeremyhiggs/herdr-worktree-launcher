@@ -1,0 +1,121 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, realpath } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { join, resolve } from 'node:path';
+
+const execute = promisify(execFile), installer = resolve('scripts/install-cli.sh');
+let buildRoot, cli;
+before(async () => {
+  buildRoot = await mkdtemp('/tmp/wl-cli-build-'); cli = join(buildRoot, 'herdr-worktree-launcher');
+  await execute('/bin/sh', [resolve('scripts/build-cli.sh'), '--output', cli], { timeout: 60000 });
+});
+after(async () => { if (buildRoot) await rm(buildRoot, { recursive: true, force: true }); });
+async function fixture(t) {
+  const dir = await realpath(await mkdtemp('/tmp/wl-cli-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const home = join(dir, 'home'), bin = join(dir, 'bin'), project = join(dir, "projects/sample's checkout"), elsewhere = join(dir, 'elsewhere');
+  for (const path of [home, bin, project, elsewhere]) await mkdir(path, { recursive: true });
+  await symlink(process.execPath, join(bin, 'node'));
+  await symlink((await execute('/usr/bin/which', ['wt'])).stdout.trim(), join(bin, 'wt'));
+  const state = join(dir, 'core.json'); await writeFile(state, JSON.stringify({ terminals: [], calls: [] }));
+  await writeFile(join(bin, 'hc'), `#!/usr/bin/env node
+const fs=require('node:fs'), readline=require('node:readline');
+const file=process.env.WL_TEST_CORE;
+if(process.argv[2]==='--version'){console.log('hc 0.1.18');process.exit(0)}
+if(process.argv[2]==='server'&&process.argv[3]==='status'){console.log(JSON.stringify({pid:123,core:{id:'fixture'}}));process.exit(0)}
+if(process.argv[2]!=='connect')throw Error('Unexpected hc command');
+readline.createInterface({input:process.stdin}).on('line',line=>{
+ const req=JSON.parse(line),state=JSON.parse(fs.readFileSync(file,'utf8'));state.calls.push(req);
+ let result;
+ if(req.method==='terminal.list')result={terminals:state.terminals};
+ else if(req.method==='terminal.run'){
+  if(process.env.WL_TEST_FAIL_RUN){console.log(JSON.stringify({jsonrpc:'2.0',id:req.id,error:{message:'spawn_failed',data:{message:'fixture spawn failed'}}}));return;}
+  result={address:'t'+(state.terminals.length+1),state:'live',cwd:req.params.cwd,foreground:{cwd:req.params.cwd},labels:req.params.labels,argv:req.params.argv};
+  state.terminals.push(result);
+ }else throw Error('Unexpected method');
+ fs.writeFileSync(file,JSON.stringify(state));console.log(JSON.stringify({jsonrpc:'2.0',id:req.id,result}));
+});
+`, { mode: 0o755 });
+  const env = { ...process.env, HOME: home, PATH: `${bin}:/usr/bin:/bin`, WL_TEST_CORE: state, HC_SOCKET: join(dir, 'core.sock'), WORKTRUNK_CONFIG_PATH: join(dir, 'worktrunk.toml') };
+  await writeFile(env.WORKTRUNK_CONFIG_PATH, '');
+  delete env.HERDR_WORKTREE_LAUNCHER_CHECKOUT;
+  const git = async (...args) => (await execute('git', ['-C', project, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args])).stdout.trim();
+  await git('init', '-b', 'main'); await git('config', 'user.name', 'Fixture'); await git('config', 'user.email', 'fixture@example.invalid');
+  await git('commit', '--allow-empty', '-m', 'fixture');
+  await git('remote', 'add', 'origin', 'https://code.example.invalid/team/sample.git');
+  const run = (args, extra = {}) => execute(cli, args, { cwd: elsewhere, env: { ...env, ...extra }, timeout: 15000 });
+  return { dir, home, bin, project, elsewhere, env, git, run, state, core: async () => JSON.parse(await readFile(state, 'utf8')) };
+}
+
+test('CLI runs from elsewhere, preserves the canonical checkout and adds fresh tabs to the existing worktree space', async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.project, 'untracked.txt'), 'keep');
+  const before = await f.git('status', '--porcelain');
+  const first = JSON.parse((await f.run(['new', 'feature/example', '--checkout', f.project, '--base', 'main', '--json'])).stdout);
+  assert.equal(first.path, join(f.home, '.herdr/worktrees/sample/feature-example'));
+  assert.equal(first.program, 'shell'); assert.equal(await f.git('status', '--porcelain'), before);
+  assert.equal(await f.git('symbolic-ref', 'HEAD'), 'refs/heads/main');
+  const second = JSON.parse((await f.run(['open', 'feature/example', '--checkout', f.project, '--json'])).stdout);
+  assert.equal(second.path, first.path); assert.equal(second.space, first.space);
+  assert.notEqual(second.tab, first.tab); assert.notEqual(second.terminal, first.terminal);
+  const core = await f.core(); assert.equal(core.terminals.length, 3);
+  assert.equal(core.terminals.filter(t => t.cwd === f.project).length, 1);
+  for (const call of core.calls) { assert.equal(call.params.on, undefined); if (call.method === 'terminal.run') assert.equal(call.params.no_parent, true); }
+});
+
+test('CLI checkout default comes from the environment and ignores remote or stale terminal locations', async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.elsewhere, '.env'), `HERDR_WORKTREE_LAUNCHER_CHECKOUT=${f.project}\n`);
+  await assert.rejects(f.run(['open', 'main', '--json']), /not a git repository|Git repository|Git command failed/i);
+  await writeFile(f.state, JSON.stringify({ calls: [], terminals: [
+    { address: 'devbox/t1', state: 'live', cwd: f.project, labels: { 'herdr.space': 'remote-space' } },
+    { address: 't2', state: 'live', cwd: f.project, foreground: { cwd: f.elsewhere }, labels: { 'herdr.space': 'stale-space' } },
+    { address: 't3', state: 'live', cwd: f.elsewhere, foreground: { cwd: f.project }, labels: { 'herdr.space': 'correct-space' } },
+  ] }));
+  const result = JSON.parse((await f.run(['open', 'main', '--json'], { HERDR_WORKTREE_LAUNCHER_CHECKOUT: f.project })).stdout);
+  assert.equal(result.path, f.project); assert.equal(result.space, 'correct-space');
+  assert.equal((await f.core()).terminals.length, 4);
+});
+
+test('CLI rejects cross-machine flags and unavailable agents before creating branches', async t => {
+  const f = await fixture(t);
+  for (const args of [['new', 'bad', '--machine', 'devbox'], ['new', 'bad', '--on', 'devbox'], ['new', 'bad', '--program', 'pi']]) {
+    await assert.rejects(f.run([...args, '--checkout', f.project]), /Unknown option|unknown option|not installed/);
+  }
+  assert.equal(await f.git('branch', '--list', 'bad'), ''); assert.equal((await f.core()).terminals.length, 0);
+});
+
+test('CLI detects a local agent and preserves a created checkout when terminal startup fails', async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.bin, 'codex'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const agent = JSON.parse((await f.run(['open', 'main', '--checkout', f.project, '--program', 'codex', '--json'])).stdout);
+  assert.equal(agent.program, 'codex');
+  const call = (await f.core()).calls.find(call => call.method === 'terminal.run');
+  assert.deepEqual(call.params.argv, [join(f.bin, 'codex'), '--no-daemon']);
+  await assert.rejects(f.run(['new', 'preserved', '--checkout', f.project], { WL_TEST_FAIL_RUN: '1' }), error => {
+    assert.match(error.stderr, /fixture spawn failed/); assert(error.stderr.includes(join(f.home, '.herdr/worktrees/sample/preserved'))); return true;
+  });
+  assert.match(await f.git('worktree', 'list', '--porcelain'), /refs\/heads\/preserved/);
+});
+
+test('CLI installer produces an executable usable without the source checkout', async t => {
+  const f = await fixture(t), prefix = join(f.dir, 'install');
+  await execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli], { env: f.env });
+  const installed = join(prefix, 'bin/herdr-worktree-launcher');
+  const help = await execute(installed, ['--help'], { cwd: f.elsewhere, env: { ...f.env, PATH: f.elsewhere } });
+  assert.match(help.stdout, /--checkout/);
+  const opened = await execute(installed, ['open', 'main', '--checkout', f.project, '--json'], { cwd: f.elsewhere, env: f.env });
+  assert.equal(JSON.parse(opened.stdout).path, f.project);
+});
+
+test('CLI installation refuses unrelated commands and installation folders', async t => {
+  const f = await fixture(t);
+  const prefix = join(f.dir, 'install'), command = join(prefix, 'bin/herdr-worktree-launcher');
+  await mkdir(join(prefix, 'bin'), { recursive: true }); await writeFile(command, 'unrelated command');
+  await assert.rejects(execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli], { env: f.env }), /already exists/);
+  assert.equal(await readFile(command, 'utf8'), 'unrelated command');
+  await rm(command); await mkdir(command);
+  await assert.rejects(execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli, '--update'], { env: f.env }), /Refusing to replace a directory/);
+});

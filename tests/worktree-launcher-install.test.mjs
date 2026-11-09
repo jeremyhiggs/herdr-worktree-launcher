@@ -46,7 +46,7 @@ test('install copies a standalone mod, merges and backs up keys, and checks with
   assert.equal(await readFile(join(f.app, backup), 'utf8'), original);
   assert.equal(await readFile(recovery, 'utf8'), 'preserve recovery');
   assert.deepEqual((await readFile(f.env.WL_EVENTS, 'utf8')).trim().split('\n').map(JSON.parse), [['--version'], ['check', f.target]]);
-  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.js', 'git.js', 'keys.json', 'main.js', 'mod.json', 'model.js', 'project-name.js'].sort());
+  assert.deepEqual((await readdir(f.target)).sort(), ['README.md', 'config.example.json', 'config.js', 'cli.js', 'keys.json', 'main.js', 'mod.json', 'model.js'].sort());
 });
 
 test('update is explicit, preserves config and keys byte-for-byte, and can change only the requested root', async t => {

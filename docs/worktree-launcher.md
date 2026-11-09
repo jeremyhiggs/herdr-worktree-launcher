@@ -30,7 +30,7 @@ Paths in the settings file must be absolute. The launcher does not expand `~` or
 To set the local root during installation, run:
 
 ```sh
-pnpm run install:mod --project-root "$HOME/Documents/Code"
+pnpm run install:mod --project-root /work/projects
 ```
 
 Here, your shell expands `$HOME` before the installer runs. An update preserves roots unless you supply `--project-root` again.
@@ -61,7 +61,7 @@ The folder can be outside the standard worktree store, including the primary che
 
 Selecting a remote branch for **Existing branch** creates a local branch that tracks that specific remote. **New branch** creates a branch without an upstream, including from a remote base.
 
-The launcher rechecks repository identity, branch state, and destination before creation. It preserves changes in the primary checkout. Git hooks run normally.
+The launcher rechecks repository identity, branch state, and destination before creation. It preserves changes in the primary checkout. Worktrunk owns worktree creation. Its project hooks are skipped; run trusted setup manually. Native Git hooks remain user-configured.
 
 ## Worktree destinations
 
@@ -91,7 +91,7 @@ The launcher rejects symlinks in existing worktree-store ancestors. The home dir
 
 The initial machine follows the active Herdr space. Changing machines clears the project and branch choices and displays that machine's saved root.
 
-All Git commands stay on the selected machine. A disconnected machine never falls back to local execution. The remote machine needs Git, `/bin/bash`, `find`, `realpath`, `test`, and `mkdir`.
+All Git commands stay on the selected machine. A disconnected machine never falls back to local execution. Each target needs `herdr-worktree-launcher`, Git, Worktrunk (`wt`), and `hc` on PATH. The desktop routes calls to the selected machine; the CLI itself has no cross-machine execution.
 
 **Open with** uses Herdr's detected programs and their launch settings. Only available Claude Code, Pi, OpenCode, and Codex programs appear. **Shell** remains available if detection fails.
 
@@ -99,7 +99,7 @@ If an agent is missing from the menu, check that Herdr can detect it on the sele
 
 The launcher creates or reuses the primary project space before opening the worktree. Herdr's standard Spaces sidebar supplies grouping. The launcher needs no `spaces-grouped` mod.
 
-For an existing checkout, the launcher detects matching spaces on the selected machine through terminal folders, the space's folder, and Git identity. It checks every tab, including when another tab uses a different folder.
+For an existing checkout, the launcher detects matching spaces on the selected machine through live core terminals and Git identity. It prefers a terminal’s foreground directory over its initial launch directory. An empty app-only space cannot be detected through the core.
 
 If a matching space exists, **Open worktree** adds a new tab with a fresh shell or selected agent. Otherwise, it creates a space. It leaves older tabs running.
 
@@ -129,13 +129,23 @@ If the command works, check `<app-home>/keys.json` for this entry under `global`
 
 Preserve other entries. If that key already has another action, assign a different key or use the direct command.
 
+### The CLI or Worktrunk is unavailable
+
+Install `herdr-worktree-launcher` and `wt` on the selected machine. Ensure Herdr's execution environment can find them on PATH. A successful native module check does not verify runtime dependencies.
+
+### Herdr context is missing or the core is unavailable
+
+Set `HC_SOCKET` or `HC_SESSION` to identify the intended running core. The CLI refuses to start or select a default core. A desktop UI call needs these variables in the executing core's environment, not only in an unrelated terminal. A remote call needs the remote core's context.
+
+Read-only project browsing remains available without core context. Creation and opening fail before mutation when context is missing or the selected core cannot be reached.
+
 ### The project root is unavailable
 
 Check the machine and the full absolute path. Remote paths must exist on the remote machine.
 
 For a local macOS folder, check System Settings → Privacy & Security → Files and Folders. Enable the relevant folder permission for Herdr, then select **Refresh**.
 
-Local commands run in Herdr.app. Its folder permissions can differ from your terminal and Herdr Core. A successful terminal access check does not prove desktop-app access.
+The CLI inherits the permissions of its executing Herdr process. These permissions can differ from your terminal. Check access from the same execution environment.
 
 If Herdr shows a pending update, finish your work and fully quit and reopen Herdr. Then retry discovery.
 
@@ -153,7 +163,7 @@ You can also close and reopen the launcher to select another project. A complete
 
 Opening waits up to ten seconds for the correct checkout, selected program, and focus. A timeout preserves the worktree and offers an opening retry in the current window.
 
-Folder checks run in a batch and are reused within that opening attempt. The selected pane's Git checkout is checked again before focus changes.
+The CLI validates checkout identity and creates the session. The UI waits for the exact returned terminal and focuses its pane. In-window retries share an outstanding CLI request until it settles.
 
 ## Recovery after an interrupted operation
 
@@ -179,13 +189,13 @@ Closing the window does not roll back Git.
 
 ## Manual installation
 
-Manual installation needs no Node or pnpm. From the repository root, copy these files:
+Install the standalone CLI first with `./scripts/install-cli.sh`, or use `--binary FILE` for a prebuilt executable. The mod copy needs no Node or pnpm. From the repository root, copy these files:
 
 ```sh
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mkdir -p "$app_home/mods/worktree-launcher"
 cp mods/worktree-launcher/main.js mods/worktree-launcher/model.js \
-  mods/worktree-launcher/git.js mods/worktree-launcher/project-name.js \
+  mods/worktree-launcher/cli.js \
   mods/worktree-launcher/config.js \
   mods/worktree-launcher/mod.json mods/worktree-launcher/config.example.json \
   mods/worktree-launcher/keys.json mods/worktree-launcher/README.md \

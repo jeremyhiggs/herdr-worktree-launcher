@@ -7,6 +7,7 @@ A native Herdr overlay for Git worktrees on local and connected Linux or macOS m
 From the source repository, run:
 
 ```sh
+./scripts/install-cli.sh
 pnpm run install:mod
 ```
 
@@ -40,9 +41,9 @@ herdr-app do mod.open --name worktree-launcher
 8. Choose **Open with**: **Shell** or an available coding agent.
 9. Check the destination, then select **Create** or press **Enter**.
 
-The launcher saves a separate project root for each machine. Remote browsing lists folders on the selected machine. No remote mod or Node installation is necessary.
+The launcher saves a separate project root for each machine. Remote browsing lists folders on the selected machine. Install the CLI, Worktrunk (`wt`), Git, and `hc` on each target. No remote mod or Node installation is necessary.
 
-Each target needs Git, `/bin/bash`, `find`, `realpath`, `test`, and `mkdir`. The mod was checked with Herdr app 0.1.13 and core 0.1.18.
+The UI delegates repository and session operations to `herdr-worktree-launcher`. Its execution environment needs `HC_SOCKET` or `HC_SESSION` for an already running core. It never guesses a default core. The mod was checked with Herdr app 0.1.13 and core 0.1.18.
 
 ## Branches and programs
 
@@ -62,9 +63,9 @@ Checked-out branches also remain available as bases for **New branch**.
 
 An existing remote branch creates a local branch that tracks that remote. A new branch has no upstream.
 
-**Open with** defaults to **Shell**. Claude Code, Pi, OpenCode, and Codex appear when Herdr detects them on the selected machine. Agents use their Herdr launch settings.
+**Open with** defaults to **Shell**. Claude Code, Pi, OpenCode, and Codex appear when Herdr detects them on the selected machine. The UI passes Herdr launch settings to the CLI, which checks the executable on the target machine.
 
-The launcher creates or reuses the primary project space, then opens the worktree space. Herdr's standard sidebar groups worktrees beneath their project. No `spaces-grouped` mod is required.
+The CLI reuses a space for the exact checkout, or assigns a new space to its terminal. Herdr's standard sidebar groups worktrees beneath their project. No `spaces-grouped` mod is required.
 
 ## Controls
 
@@ -120,6 +121,8 @@ For an incomplete operation:
 3. Repair any incomplete artifact manually.
 4. Move the operation record aside only after you understand the Git outcome.
 5. Open the launcher again.
+
+The CLI uses Worktrunk for creation and skips Worktrunk project hooks. Run trusted setup manually. Missing `wt` or Herdr context stops creation.
 
 The launcher never removes branches or worktrees automatically. Closing the window does not roll back Git.
 

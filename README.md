@@ -1,6 +1,6 @@
 # Worktree Launcher
 
-Create Git worktrees or start a fresh session in an existing checkout, without leaving Herdr.
+Create Git worktrees or start a fresh Herdr session from the desktop launcher or a terminal.
 
 Choose a project, select a branch, and open a shell or coding agent. Your primary checkout stays intact.
 
@@ -15,20 +15,22 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 | Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
 | Native Herdr workflow | Keep worktrees grouped beneath their project, use keyboard controls, and follow Herdr's light or dark theme. |
+| Terminal CLI | Run locally from any directory, including a mobile terminal, with an explicit canonical checkout. |
 
 If a created worktree's session fails to open, you can retry opening it without repeating Git creation.
 
-## Install
+## Install the desktop launcher
 
 You need:
 
 - Herdr for macOS, with `herdr-app` and `hc` available in your terminal.
-- Git and Bash on each machine that will contain worktrees.
-- Node.js 24 or newer and pnpm 11.x for installation only.
+- Git, [Worktrunk](https://worktrunk.dev/) (`wt`), `hc`, and `herdr-worktree-launcher` on each target machine.
+- Go for building the CLI. Node.js 24 or newer and pnpm 11.x for installing the desktop mod.
 
 Download or clone this repository. In your terminal, change into its directory, then run:
 
 ```sh
+./scripts/install-cli.sh
 pnpm run install:mod
 ```
 
@@ -42,7 +44,7 @@ If that shortcut is already assigned, use `pnpm run install:mod --no-shortcut`. 
 herdr-app do mod.open --name worktree-launcher
 ```
 
-The installed mod needs no Node process or additional mod. It was checked with Herdr app 0.1.13 and core 0.1.18.
+The installed mod calls the CLI on the selected machine. It needs no Node process or additional mod. It was checked with Herdr app 0.1.13 and core 0.1.18.
 
 ### Choose a different shortcut
 
@@ -73,6 +75,77 @@ pnpm run install:mod --update --no-shortcut
 ```
 
 This preserves your custom binding and prevents the installer from adding **⌘⇧G** again.
+
+## Use the terminal CLI
+
+`herdr-worktree-launcher` runs on Linux and macOS. It needs Git, [Worktrunk](https://worktrunk.dev/) (`wt`), and `hc` on that machine.
+
+The installed command is a standalone executable. It needs no Node, Bun, pnpm, or npm packages. The desktop app can stay closed.
+
+To build and install from this repository, install [Go](https://go.dev/doc/install), then run:
+
+```sh
+./scripts/install-cli.sh
+```
+
+Go is a build tool only. The CLI uses the Go standard library without third-party Go modules. The script installs one executable at `~/.local/bin/herdr-worktree-launcher`. Add `~/.local/bin` to your `PATH` if necessary. You can also use `pnpm run install:cli`; no dependency installation is required.
+
+The repository includes `mise.toml` for Go and Worktrunk. If you use [mise](https://mise.jdx.dev/), run `mise install` first. Keep `wt` on the runtime `PATH`; the launcher reports a clear error if it is missing. Herdr supplies `hc` separately.
+
+The CLI requires **`HC_SOCKET` or `HC_SESSION`** to identify an already running local Herdr core. Run it from a Herdr terminal that exposes this context. It refuses to guess or start a default core. The desktop launcher has the same requirement: its core execution environment must expose the context. Do not point it at an unrelated core.
+
+The desktop UI delegates discovery, Git operations, program detection, and session creation to this CLI. For a remote target, install the binary and `wt` there too. Herdr routes the UI call; the CLI itself always operates locally.
+
+To install an existing binary without build tools, run:
+
+```sh
+./scripts/install-cli.sh --binary ./dist/herdr-worktree-launcher
+```
+
+To build without installation, run `./scripts/build-cli.sh`. The output is `dist/herdr-worktree-launcher` for your platform.
+
+To rebuild and update the installed command, run `./scripts/install-cli.sh --update`. For a prebuilt update, also supply `--binary FILE`.
+
+### Choose the canonical checkout
+
+`--checkout` points to **one repository's canonical checkout**, not a directory containing projects. It takes priority over the environment default and current directory.
+
+From any directory, run:
+
+```sh
+herdr-worktree-launcher new feature/rate-limits \
+  --checkout /work/projects/sample-api --base main
+
+herdr-worktree-launcher open feature/rate-limits \
+  --checkout /work/projects/sample-api --program codex
+```
+
+To reuse the same checkout from any directory, set a shell default:
+
+```sh
+export HERDR_WORKTREE_LAUNCHER_CHECKOUT=/work/projects/sample-api
+herdr-worktree-launcher new feature/mobile --base main
+```
+
+Without `--checkout` or the environment default, the CLI uses the current repository. From a linked worktree, it resolves the canonical checkout.
+
+### Create or open a session
+
+Run `herdr-worktree-launcher` without a command for text prompts. It asks for the action, branch, base, and installed program.
+
+`new` creates a branch from `--base`, or the canonical checkout's current branch. `open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Fetch branches with Git before the command when necessary.
+
+Each successful command starts a **fresh terminal**. If a matching Herdr space exists, the CLI adds a new tab there. Otherwise, it creates a space. The desktop app adopts the space and tabs when it connects.
+
+`--program` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
+
+Use `--attach` to enter the new terminal immediately. Otherwise, the output includes an `hc attach` command. `--json` returns the checkout path and terminal, space, and tab IDs for scripts.
+
+The CLI operates only on the machine where it runs. To use devbox, run the command inside a devbox terminal. It has no machine-routing flags.
+
+If session startup fails after Git succeeds, the CLI reports the preserved checkout path. Use `open` to retry session creation. The CLI stores no recovery state between invocations.
+
+Run `herdr-worktree-launcher --help` for all flags, or `--skill` for the agent API and safety contract. Worktrunk project hooks are skipped; run trusted setup commands yourself after creation. The installer accepts `--prefix DIRECTORY` for a different installation location.
 
 ## Create your first worktree
 
@@ -204,6 +277,7 @@ The UI follows Herdr's light or dark theme, including system appearance when Her
 From an updated copy of this repository, run:
 
 ```sh
+./scripts/install-cli.sh --update
 pnpm run install:mod --update
 ```
 
@@ -213,6 +287,8 @@ Updates preserve saved roots and recovery records. Installation does not restart
 
 ## Need help?
 
+- **CLI unavailable:** install `herdr-worktree-launcher` and Worktrunk on the selected machine, and put both on its `PATH`.
+- **Missing Herdr context:** run from an environment with `HC_SOCKET` or `HC_SESSION` for the intended running core. The launcher refuses to guess.
 - **No projects:** check the selected machine and root, then select **Refresh**.
 - **Cannot read a local folder:** check Herdr's permissions in System Settings → Privacy & Security → Files and Folders.
 - **Git succeeded but the space did not open:** select **Open created worktree** to retry without creating another checkout.

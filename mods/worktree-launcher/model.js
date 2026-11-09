@@ -9,85 +9,32 @@ function launchChoices(programs) {
   })];
 }
 
-export async function openCheckout(request, git, app) {
-  const machine = request.machine ?? null;
-  const launch = request.launch?.key && request.launch.key !== 'shell' ? request.launch : null;
-  const acceptsProgram = pane => launch ? pane.program?.key === launch.key : pane.program?.shell;
-  const previousTerminals = new Set(request.reuse ? request.previousTerminals ?? [] : []);
-  if ((git.machine ?? null) !== machine) throw new Error('Checkout belongs to another machine.');
+export async function openCheckout(request, backend, app) {
+  if ((backend.machine ?? null) !== (request.machine ?? null)) throw new Error('Checkout belongs to another machine.');
   const deadline = app.now() + 10000;
   let expired = false;
-  const unconfirmed = () => new Error(`Opening unconfirmed after 10 seconds. Checkout preserved at ${request.path}. Retry ${request.reuse ? 'Open worktree' : 'Open created worktree'}.`);
+  const unconfirmed = () => new Error(`Opening unconfirmed after 10 seconds. Checkout preserved at ${request.path}. Retry opening the worktree.`);
   const check = () => { if (expired || app.now() >= deadline) throw unconfirmed(); };
-  const send = (command, args) => { check(); app.run(command, args); };
   const timer = app.timeout(10000);
   async function operation() {
-    const project = await git.identity(request.project.path);
+    const opened = await backend.open(request);
     check();
-    if (project.id !== request.project.id || project.top !== request.project.path) throw new Error('Project checkout identity changed; inspect Git.');
-    const target = await git.identity(request.path);
-    check();
-    if (target.id !== request.project.id) throw new Error('Checkout identity changed; inspect Git.');
-    // Cache only within this attempt; the chosen pane is checked live before focus.
-    const identities = new Map([[request.project.path, project], [request.path, target]]);
-    async function match(identity, selectedProgram) {
-      const { spaces, panes } = app.snapshot();
-      const local = spaces.filter(s => (s.machine ?? null) === machine);
-      // Check the likely space first, then verify its live checkout like every other candidate.
-      local.sort((a, b) => Number(b.folder === identity.top) - Number(a.folder === identity.top));
-      const rows = local.map(space => {
-        const tabs = new Set(space.tabs.map(t => t.id));
-        const candidates = panes.filter(p => tabs.has(p.tab) && p.terminal && p.cwd);
-        const locations = selectedProgram ? candidates.filter(pane => acceptsProgram(pane) && !previousTerminals.has(pane.terminal)) : [...candidates, ...(space.folder ? [{ cwd: space.folder }] : [])];
-        return { space, locations };
-      });
-      const missing = [...new Set(rows.flatMap(row => row.locations.map(pane => pane.cwd)))].filter(path => !identities.has(path));
-      for (const { space, locations } of rows) for (const pane of locations) {
-        if (!identities.has(pane.cwd)) {
-          check();
-          const found = await git.identities(missing);
-          check();
-          for (const path of missing) identities.set(path, found.get(path) ?? null);
-        }
-        const current = identities.get(pane.cwd);
-        if (current?.id === identity.id && current.top === identity.top) return { space, pane };
-      }
-      return null;
-    }
-    async function ensure(identity, path, selectedProgram) {
-      let found = await match(identity, selectedProgram);
-      if (found) return found;
-      const existing = selectedProgram ? await match(identity, false) : null;
-      const program = selectedProgram && launch ? { argv: launch.argv } : {};
-      if (existing) send('tab.new', { space: existing.space.id, folder: path, ...program, ...(launch ? { name: launch.label } : {}) });
-      else send('space.new', { folder: path, machine: machine ?? '', ...program, ...(selectedProgram && launch ? { tab: launch.label } : {}) });
-      while (app.now() < deadline) {
-        check();
-        found = await match(identity, selectedProgram);
-        if (found) return found;
-        await app.pause();
-      }
-      throw unconfirmed();
-    }
-    await ensure(project, request.project.path, false);
-    let found = await ensure(target, request.path, true);
+    const terminal = request.machine ? `${request.machine}/${opened.terminal}` : opened.terminal;
     let selected = '';
     while (app.now() < deadline) {
       check();
-      found = await match(target, true);
-      if (found) {
-        const { space, pane } = found;
+      const { spaces, panes } = app.snapshot();
+      const pane = panes.find(p => p.terminal === terminal);
+      const space = pane && spaces.find(s => (s.machine ?? null) === (request.machine ?? null) && s.tabs.some(t => t.id === pane.tab));
+      if (space && pane) {
         if (selected !== pane.pane) {
-          const current = await git.identity(pane.cwd);
-          check();
-          if (current.id !== target.id || current.top !== target.top) throw new Error('Checkout identity changed before focus; retry opening.');
-          send('space.select', { id: space.id });
-          send('tab.select', { id: pane.tab });
-          send('pane.focus', { pane: pane.pane });
+          for (const [command, args] of [['space.select', { id: space.id }], ['tab.select', { id: pane.tab }], ['pane.focus', { pane: pane.pane }]]) {
+            check(); app.run(command, args);
+          }
           selected = pane.pane;
         }
         const current = app.snapshot();
-        if (current.spaces.some(s => s.id === space.id && s.active) && current.panes.some(p => p.pane === pane.pane && p.focused && p.cwd === pane.cwd && acceptsProgram(p))) return;
+        if (current.spaces.some(s => s.id === space.id && s.active) && current.panes.some(p => p.pane === pane.pane && p.terminal === terminal && p.focused)) return;
       }
       await app.pause();
     }
@@ -98,8 +45,8 @@ export async function openCheckout(request, git, app) {
 }
 
 export class WorktreeModel {
-  constructor({ connect, config, saveRoot, journal, open, machine = null, listAgents = async () => [], terminals = () => [] }) {
-    Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents, terminals });
+  constructor({ connect, config, saveRoot, journal, open, machine = null, listAgents = async () => [] }) {
+    Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents });
     this.launches = [shellLaunch];
     this.launch = shellLaunch;
     this.git = null;
@@ -128,10 +75,17 @@ export class WorktreeModel {
   get path() {
     if (this.result) return this.result.path;
     if (this.reusing) return this.ref.checkout;
-    try { return this.project ? this.git.destination(this.project, this.action === 'existing' ? this.ref?.name ?? '' : this.name) : ''; }
-    catch { return ''; }
+    return this.previewPath ?? '';
   }
-  resetFields() { this.refs = []; this.ref = null; this.remotes = []; this.remote = null; this.fetchMessage = ''; this.name = ''; this.error = ''; }
+  async preview() {
+    const project = this.project, name = this.action === 'existing' ? this.ref?.name ?? '' : this.name, action = this.action, generation = this.generation;
+    this.previewPath = '';
+    if (!project || !name) return;
+    let path = '';
+    try { path = await this.git.destination(project, name); } catch {}
+    if (!this.closed && generation === this.generation && this.project === project && this.action === action && name === (action === 'existing' ? this.ref?.name ?? '' : this.name)) this.previewPath = path;
+  }
+  resetFields() { this.previewPath = ''; this.refs = []; this.ref = null; this.remotes = []; this.remote = null; this.fetchMessage = ''; this.name = ''; this.error = ''; }
   async refresh(changed = () => {}) {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
@@ -235,11 +189,11 @@ export class WorktreeModel {
   }
   setAction(action) {
     if (!this.editable || this.action === action) return false;
-    this.action = action; this.name = ''; this.error = '';
+    this.action = action; this.name = ''; this.previewPath = ''; this.error = '';
     return true;
   }
-  setName(name) { if (this.editable) { this.name = name; this.error = ''; } }
-  selectRef(ref) { if (this.editable && (this.action === 'new' || !ref.reason)) { this.ref = ref; this.error = ''; } }
+  setName(name) { if (this.editable) { this.name = name; this.previewPath = ''; this.error = ''; } }
+  selectRef(ref) { if (this.editable && (this.action === 'new' || !ref.reason)) { this.ref = ref; this.previewPath = ''; this.error = ''; } }
   selectLaunch(launch) {
     if (this.closed || !['editing', 'recover'].includes(this.phase)) return;
     const selected = this.launches.find(item => item.key === launch.key);
@@ -278,9 +232,6 @@ export class WorktreeModel {
       if (result.kind !== 'created') { this.result = result; this.phase = 'partial'; this.error = result.error || 'Checkout changed. Inspect Git before opening.'; return; }
       if (this.pending) { await this.journal.save(null); this.pending = null; }
       const request = { ...result.request, launch: this.launch };
-      const firstOpening = request.reuse && !Array.isArray(request.previousTerminals);
-      // An in-window retry must distinguish this attempt's terminal from older tabs.
-      if (firstOpening) request.previousTerminals = this.terminals();
       this.result = { ...result, request };
       await open(request);
       this.phase = 'complete';

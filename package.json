@@ -2,6 +2,7 @@
   "name": "worktree-launcher",
   "private": true,
   "type": "module",
+  "bin": { "herdr-worktree-launcher": "dist/herdr-worktree-launcher" },
   "packageManager": "pnpm@11.28.6",
   "engines": {
     "node": ">=24",
@@ -9,6 +10,8 @@
   },
   "scripts": {
     "install:mod": "node scripts/install-mod.mjs",
+    "build:cli": "./scripts/build-cli.sh",
+    "install:cli": "./scripts/install-cli.sh",
     "test": "node --test tests/worktree-launcher-*.test.mjs",
     "test:app": "node scripts/test-app.mjs",
     "screenshots": "node scripts/capture-screenshots.mjs"

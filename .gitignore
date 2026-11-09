@@ -5,3 +5,4 @@ mods/worktree-launcher/gpui-kit.d.ts
 mods/worktree-launcher/jsconfig.json
 node_modules/
 .pnpm-store/
+dist/

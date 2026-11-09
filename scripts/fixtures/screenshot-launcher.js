@@ -31,7 +31,7 @@ export default class ScreenshotLauncher extends Launcher {
           const ref = m.refs.find(item => item.ref === (scene === 'fetch' ? 'refs/remotes/origin/feature/from-remote' : existing ? 'refs/heads/feature/pagination' : 'refs/heads/main'));
           if (!ref) throw new Error('Sample branch not discovered.');
           m.selectRef(ref); this.showChoice('ref', ref.label);
-          m.setName('feature/rate-limits'); this.showChoice('name', m.name);
+          m.setName('feature/rate-limits'); this.showChoice('name', m.name); await m.preview();
           this.syncContext(); this.index = 0; this.openField = null;
           if (scene === 'existing') { this.inputs.ref.focus(); this.field = 'ref'; this.openField = 'ref'; }
           else if (scene === 'agents') { this.inputs.launch.focus(); this.field = 'launch'; this.openField = 'launch'; }

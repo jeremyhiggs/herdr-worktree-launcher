@@ -11,7 +11,7 @@ const execute = promisify(execFile);
 const { values } = parseArgs({ options: { output: { type: 'string' } } });
 const root = await realpath(await mkdtemp('/tmp/wld-'));
 const output = resolve(values.output ?? join(repository, 'docs/screenshots'));
-const env = { ...process.env, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'docs', HC_SOCKET: join(root, 'run/herdr-core/docs.sock'), ZDOTDIR: join(root, 'shell'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
+const env = { ...process.env, PATH: `${join(repository, 'dist')}:${process.env.PATH}`, HOME: join(root, 'home'), HERDR_APP_HOME: join(root, 'app'), HC_SESSION: 'docs', HC_SOCKET: join(root, 'run/herdr-core/docs.sock'), ZDOTDIR: join(root, 'shell'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), XDG_STATE_HOME: join(root, 'state'), XDG_RUNTIME_DIR: join(root, 'run') };
 for (const key of ['HC_TERMINAL_ID', 'HERDR_SPACE_ID', 'HERDR_TAB_ID', 'HERDR_PANE_ID']) delete env[key];
 const run = async (binary, args, timeout = 30000) => (await execute(binary, args, { cwd: root, env, timeout, maxBuffer: 8 * 1024 * 1024 })).stdout;
 const app = (args, timeout) => run('herdr-app', args, timeout);
