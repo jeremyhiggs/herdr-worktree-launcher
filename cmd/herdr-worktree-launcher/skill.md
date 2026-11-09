@@ -7,7 +7,7 @@ core when both variables are missing. Install Worktrunk if `wt` is missing.
 
 ```sh
 herdr-worktree-launcher new feature/example --checkout /code/project --base main --json
-herdr-worktree-launcher open feature/example --checkout /code/project --program codex --json
+herdr-worktree-launcher open origin/feature/example --checkout /code/project --fetch origin --program codex --json
 herdr-worktree-launcher api --request '{"operation":"context"}'
 herdr-worktree-launcher api --request '{"operation":"project","path":"/code/project"}'
 ```
@@ -17,6 +17,11 @@ current directory. Linked checkouts resolve to the primary checkout. Naming uses
 origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.
+
+For human commands, `--fetch REMOTE` fetches only that configured remote before
+resolving branch choices and invoking Worktrunk. Fetch failure stops creation.
+Without the flag, refs are not fetched. API callers use the existing fetch
+operation before prepare/create.
 
 The API accepts `{operation,...arguments}`. Operations: context, validateRoot
 (`config.project_root`), directories (`path`), discover (`config`), project and

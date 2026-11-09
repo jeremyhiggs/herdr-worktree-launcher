@@ -1204,6 +1204,29 @@ func openCheckout(r Request) (OpenResult, error) {
 	return OpenResult{r.Path, t.Address, space, tab, key}, nil
 }
 
+func fetch(p Project, remote string) ([]Ref, error) {
+	if err := validateProject(p); err != nil {
+		return nil, err
+	}
+	text, err := git(p.Path, "remote")
+	if err != nil {
+		return nil, err
+	}
+	valid := false
+	for _, name := range strings.Fields(text) {
+		if name == remote {
+			valid = true
+		}
+	}
+	if !valid {
+		return nil, errors.New("Select a configured Git remote.")
+	}
+	if _, err = git(p.Path, "fetch", "--no-tags", "--no-recurse-submodules", "--", remote); err != nil {
+		return nil, err
+	}
+	return choices(p)
+}
+
 func api(in input) (any, error) {
 	switch in.Operation {
 	case "context":
@@ -1263,26 +1286,7 @@ func api(in input) (any, error) {
 		}
 		return rows, err
 	case "fetch":
-		if err := validateProject(in.Project); err != nil {
-			return nil, err
-		}
-		text, err := git(in.Project.Path, "remote")
-		if err != nil {
-			return nil, err
-		}
-		valid := false
-		for _, name := range strings.Fields(text) {
-			if name == in.Remote {
-				valid = true
-			}
-		}
-		if !valid {
-			return nil, errors.New("Select a configured Git remote.")
-		}
-		if _, err = git(in.Project.Path, "fetch", "--no-tags", "--no-recurse-submodules", "--", in.Remote); err != nil {
-			return nil, err
-		}
-		return choices(in.Project)
+		return fetch(in.Project, in.Remote)
 	case "destination":
 		return destination(in.Project, in.Name)
 	case "prepare":
@@ -1337,7 +1341,7 @@ func run(args []string) (any, bool, error) {
 					return nil, false, fmt.Errorf("Option --%s takes no value", key)
 				}
 				flags[key] = true
-			case "checkout", "base", "program", "request":
+			case "checkout", "base", "program", "request", "fetch":
 				if !has {
 					i++
 					if i >= len(args) {
@@ -1371,6 +1375,9 @@ func run(args []string) (any, bool, error) {
 	}
 	isAPI := len(positionals) > 0 && positionals[0] == "api"
 	if isAPI {
+		if _, ok := values["fetch"]; ok {
+			return nil, true, errors.New("For API requests, use the fetch operation before prepare/create.")
+		}
 		if len(positionals) != 1 || values["request"] == "" {
 			return nil, true, errors.New("Usage: herdr-worktree-launcher api --request '<JSON>'")
 		}
@@ -1454,7 +1461,12 @@ func run(args []string) (any, bool, error) {
 	if err != nil {
 		return nil, jsonOutput, err
 	}
-	refs, err := choices(p)
+	var refs []Ref
+	if remote, requested := values["fetch"]; requested {
+		refs, err = fetch(p, remote)
+	} else {
+		refs, err = choices(p)
+	}
 	if err != nil {
 		return nil, jsonOutput, err
 	}

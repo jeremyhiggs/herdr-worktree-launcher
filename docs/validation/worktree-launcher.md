@@ -9,7 +9,7 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 73 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 75 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.13 |
@@ -25,6 +25,8 @@ The GitHub workflows use the locally verified scripts. Hosted workflow runs rema
 ## Safety and behavior
 
 Go tests use real Git repositories and Worktrunk. They verify staged, unstaged, and untracked preservation; branch attachment; upstreams; remote collisions; changed eligibility; literal paths; symlink ancestors; and partially completed operations. Naming tests cover origin URLs and bounded package/Python manifest reads.
+
+CLI fetch tests cover remote-only bases and branches, both flag forms, selecting one remote, dirty-checkout preservation, and stopping before Worktrunk/session creation on fetch errors.
 
 Session tests use a core protocol fixture. They prefer live foreground directories, ignore remote terminal addresses, reuse a space for the exact checkout, and create a fresh tab for each new attempt. An in-window retry can reuse only its own terminal. A session failure leaves the checkout intact.
 

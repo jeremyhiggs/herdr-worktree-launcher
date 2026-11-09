@@ -23,7 +23,7 @@ herdr-worktree-launcher --help
 herdr-worktree-launcher --skill
 ```
 
-Use `--checkout` to select one repository's canonical checkout from any directory. `USAGE.txt` lists commands and options.
+Use `--checkout` to select one repository's canonical checkout from any directory. Add `--fetch origin` (or another configured remote) to refresh branches before creation or opening. Fetch failure stops the command. `USAGE.txt` lists commands and options.
 
 ## Desktop mod
 

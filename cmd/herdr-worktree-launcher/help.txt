@@ -1,11 +1,12 @@
 Usage: herdr-worktree-launcher [new|open] [BRANCH] [options]
 
   new feature/name --checkout /code/project --base main
-  open feature/name --checkout /code/project --program codex
+  open origin/feature/name --checkout /code/project --fetch origin --program codex
   (no arguments)                  Prompt for action, branch and program
 
   --checkout PATH   Checkout (default: HERDR_WORKTREE_LAUNCHER_CHECKOUT, then cwd)
   --base REF        Base branch for new (default: primary checkout's branch)
+  --fetch REMOTE    Fetch one configured remote before branch selection and wt
   --program NAME    shell, claude, pi, opencode or codex (default: shell)
   --json            Print session information as JSON
   --attach          Attach foreground stdin to the new session (without --json)
@@ -22,6 +23,7 @@ Linked checkouts resolve to their primary checkout. Worktrees are placed under
 Worktrunk owns creation. Backend calls use --no-hooks to skip Worktrunk project
 hooks. Run trusted setup manually afterwards. No files or branches are deleted.
 If terminal startup fails, the checkout is preserved; retry with open BRANCH.
+Fetch failure stops creation. Omit --fetch to use locally available refs.
 Opening a linked checkout also ensures a shell space for its primary checkout.
 
 JSON API: herdr-worktree-launcher api --request '{"operation":"context"}'

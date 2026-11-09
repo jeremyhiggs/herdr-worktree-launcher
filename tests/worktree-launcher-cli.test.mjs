@@ -105,7 +105,7 @@ test('CLI installer produces an executable usable without the source checkout', 
   await execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli], { env: f.env });
   const installed = join(prefix, 'bin/herdr-worktree-launcher');
   const help = await execute(installed, ['--help'], { cwd: f.elsewhere, env: { ...f.env, PATH: f.elsewhere } });
-  assert.match(help.stdout, /--checkout/);
+  assert.match(help.stdout, /--checkout/); assert.match(help.stdout, /--fetch REMOTE/);
   const opened = await execute(installed, ['open', 'main', '--checkout', f.project, '--json'], { cwd: f.elsewhere, env: f.env });
   assert.equal(JSON.parse(opened.stdout).path, f.project);
 });
@@ -118,4 +118,46 @@ test('CLI installation refuses unrelated commands and installation folders', asy
   assert.equal(await readFile(command, 'utf8'), 'unrelated command');
   await rm(command); await mkdir(command);
   await assert.rejects(execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli, '--update'], { env: f.env }), /Refusing to replace a directory/);
+});
+
+test('CLI fetches only the requested remote before resolving a new base or existing branch', async t => {
+  for (const action of ['new', 'open']) {
+    const f = await fixture(t), origin = join(f.dir, 'origin.git'), upstream = join(f.dir, 'upstream.git');
+    for (const remote of [origin, upstream]) {
+      await execute('git', ['clone', '--bare', f.project, remote]);
+      await execute('git', ['-C', remote, 'branch', 'fresh', 'main']);
+    }
+    await f.git('remote', 'set-url', 'origin', origin);
+    await f.git('remote', 'add', 'upstream', upstream);
+    await writeFile(join(f.project, 'local.txt'), 'staged'); await f.git('add', 'local.txt');
+    await writeFile(join(f.project, 'local.txt'), 'unstaged'); await writeFile(join(f.project, 'untracked.txt'), 'keep');
+    const snapshot = async () => Promise.all([f.git('rev-parse', 'HEAD'), f.git('status', '--porcelain'), f.git('diff'), f.git('diff', '--cached')]);
+    const before = await snapshot();
+    await assert.rejects(f.git('rev-parse', '--verify', 'refs/remotes/origin/fresh'));
+    const args = action === 'new' ? ['new', 'after-fetch', '--base', 'origin/fresh'] : ['open', 'origin/fresh'];
+    const fetchArgs = action === 'new' ? ['--fetch', 'origin'] : ['--fetch=origin'];
+    const result = JSON.parse((await f.run([...args, '--checkout', f.project, ...fetchArgs, '--json'])).stdout);
+    const head = (await execute('git', ['-C', result.path, 'rev-parse', 'HEAD'])).stdout.trim();
+    assert.equal(head, await f.git('rev-parse', 'refs/remotes/origin/fresh'));
+    const tracking = (await execute('git', ['-C', result.path, 'for-each-ref', '--format=%(upstream)', `refs/heads/${action === 'new' ? 'after-fetch' : 'fresh'}`])).stdout.trim();
+    assert.equal(tracking, action === 'new' ? '' : 'refs/remotes/origin/fresh');
+    await assert.rejects(f.git('rev-parse', '--verify', 'refs/remotes/upstream/fresh'));
+    assert.deepEqual(await snapshot(), before);
+  }
+});
+
+test('CLI fetch errors stop before Worktrunk or session creation', async t => {
+  const f = await fixture(t), marker = join(f.dir, 'wt-called');
+  await rm(join(f.bin, 'wt'));
+  await writeFile(join(f.bin, 'wt'), '#!/bin/sh\n: > "$WL_TEST_WT_MARKER"\nexit 1\n', { mode: 0o755 });
+  await f.git('remote', 'set-url', 'origin', join(f.dir, 'missing.git'));
+  const before = await f.git('worktree', 'list', '--porcelain');
+  await assert.rejects(f.run(['api', '--request', '{"operation":"context"}', '--fetch', 'origin']), /use the fetch operation/);
+  for (const remote of ['upstream', '--all', '', 'origin']) {
+    await assert.rejects(f.run(['new', 'blocked', '--checkout', f.project, '--fetch', remote], { WL_TEST_WT_MARKER: marker }), /configured Git remote|does not appear to be a git repository/);
+    assert.equal(await f.git('branch', '--list', 'blocked'), '');
+  }
+  assert.equal(await f.git('worktree', 'list', '--porcelain'), before);
+  await assert.rejects(readFile(marker), { code: 'ENOENT' });
+  assert.equal((await f.core()).terminals.length, 0);
 });

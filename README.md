@@ -133,7 +133,14 @@ Without `--checkout` or the environment default, the CLI uses the current reposi
 
 Run `herdr-worktree-launcher` without a command for text prompts. It asks for the action, branch, base, and installed program.
 
-`new` creates a branch from `--base`, or the canonical checkout's current branch. `open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Fetch branches with Git before the command when necessary.
+`new` creates a branch from `--base`, or the canonical checkout's current branch. `open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Add `--fetch REMOTE` to refresh one configured remote before resolving branches and invoking Worktrunk:
+
+```sh
+herdr-worktree-launcher new feature/mobile --base origin/main --fetch origin
+herdr-worktree-launcher open origin/feature/search --fetch origin
+```
+
+Use `--checkout` or the environment default when running outside the repository. Fetching preserves the canonical checkout's branch, index, and files. If fetching fails, the command stops before creating a worktree or session. Without `--fetch`, it uses the refs already available locally.
 
 Each successful command starts a **fresh terminal**. If a matching Herdr space exists, the CLI adds a new tab there. Otherwise, it creates a space. The desktop app adopts the space and tabs when it connects.
 
