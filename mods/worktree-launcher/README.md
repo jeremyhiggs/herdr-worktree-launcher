@@ -43,7 +43,7 @@ herdr-app do mod.open --name worktree-launcher
 
 The launcher saves a separate project root for each machine. Remote browsing lists folders on the selected machine. Install the CLI, Worktrunk (`wt`), Git, and `hc` on each target. No remote mod or Node installation is necessary.
 
-The UI delegates repository and session operations to `herdr-worktree-launcher`. Its execution environment needs `HC_SOCKET` or `HC_SESSION` for an already running core. It never guesses a default core. The mod was checked with Herdr app 0.1.13 and core 0.1.18.
+The UI delegates repository and session operations to `herdr-worktree-launcher`. It obtains the running core's ID through `hc` and supplies that ID explicitly for creation and opening. The CLI rejects a changed core connection before mutation. No manual `HC_SOCKET` or `HC_SESSION` export is required for the UI. Standalone commands still require one of those variables. The launcher never starts a core.
 
 ## Branches and programs
 

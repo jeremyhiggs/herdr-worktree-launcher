@@ -232,6 +232,60 @@ func TestMissingContextAndWorktrunkRefuseBeforeCreation(t *testing.T) {
 	}
 }
 
+func TestAppCoreIdentityWithoutInheritedCoreEnvironment(t *testing.T) {
+	f := setup(t)
+	r := f.prepare(t, "new", "refs/heads/main", "from-app")
+	t.Setenv("HC_SOCKET", "")
+	t.Setenv("HC_SESSION", "")
+	context, err := api(input{Operation: "context"})
+	if err != nil || context.(map[string]any)["core_id"] != "fixture-core" {
+		t.Fatalf("app core context: %+v %v", context, err)
+	}
+	r.CoreID = context.(map[string]any)["core_id"].(string)
+	result, err := api(input{Operation: "create", Request: r})
+	if err != nil {
+		t.Fatalf("app's verified core must work without inherited selectors: %v", err)
+	}
+	if result.(Result).Kind != "created" {
+		t.Fatalf("app creation: %+v", result)
+	}
+	r.Attempt = "app-opening"
+	if _, err := api(input{Operation: "open", Request: r}); err != nil {
+		t.Fatalf("app opening: %v", err)
+	}
+}
+
+func TestAppCoreIdentityMismatchRefusesCreationAndOpening(t *testing.T) {
+	f := setup(t)
+	for _, inherited := range []bool{true, false} {
+		if !inherited {
+			t.Setenv("HC_SOCKET", "")
+			t.Setenv("HC_SESSION", "")
+		}
+		r := f.prepare(t, "new", "refs/heads/main", "wrong-core")
+		r.CoreID = "another-core"
+		_, err := api(input{Operation: "create", Request: r})
+		var detail *failure
+		if !errors.As(err, &detail) || detail.Kind != "core_unavailable" {
+			t.Fatalf("mismatched core accepted: %v", err)
+		}
+		if f.git(t, "branch", "--list", r.Name) != "" {
+			t.Fatal("branch created on mismatched core")
+		}
+		if _, err := os.Stat(r.Path); !os.IsNotExist(err) {
+			t.Fatal("destination created on mismatched core")
+		}
+		r = f.prepare(t, "existing", "refs/heads/main", "")
+		r.CoreID = "another-core"
+		if _, err = api(input{Operation: "open", Request: r}); !errors.As(err, &detail) || detail.Kind != "core_unavailable" {
+			t.Fatalf("opening on mismatched core: %v", err)
+		}
+		if len(f.core(t).Calls) != 0 {
+			t.Fatal("terminal RPC attempted on mismatched core")
+		}
+	}
+}
+
 func TestRealWorktrunkCreationReuseAndRecovery(t *testing.T) {
 	f := setup(t)
 	if err := os.WriteFile(filepath.Join(f.repo, "staged.txt"), []byte("keep staged"), 0600); err != nil {

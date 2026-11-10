@@ -37,6 +37,6 @@ node scripts/install-mod.mjs
 
 For an update, add `--update`. The installer checks native loading and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
 
-Node is required only for this installer. The running mod calls the standalone CLI. The executing core must expose its own `HC_SOCKET` or `HC_SESSION`.
+Node is required only for this installer. The running mod calls the standalone CLI. The mod supplies a verified running core ID automatically. No manual core environment export is required for the desktop UI.
 
 The installed mod's README describes project roots, branch selection, remote fetch, agents, and recovery. Packages contain no personal settings or saved operation records.

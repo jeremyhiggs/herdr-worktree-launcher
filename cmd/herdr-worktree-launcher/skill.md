@@ -1,9 +1,9 @@
 # Herdr worktree launcher
 
 Use the standalone `herdr-worktree-launcher` binary locally. It requires only
-`git`, Worktrunk's `wt`, and `hc` at runtime. Set `HC_SOCKET` or `HC_SESSION` to an
-already running local core; the launcher never starts a core or chooses a default
-core when both variables are missing. Install Worktrunk if `wt` is missing.
+`git`, Worktrunk's `wt`, and `hc` at runtime. For standalone commands, set
+`HC_SOCKET` or `HC_SESSION` to an already running local core. The launcher never
+starts a core. Install Worktrunk if `wt` is missing.
 
 ```sh
 herdr-worktree-launcher new feature/example --checkout /code/project --base main --json
@@ -33,6 +33,13 @@ identity (`path`), identities (`paths`), choices/remotes (`project`), fetch
 Prepare returns a request; create returns `{kind,path,request,error?}` with kind
 created, partial, or absent. Open returns `{path,terminal,space,tab,program}`.
 Errors use `{error:{kind,message,hint}}` with nonzero exit status.
+
+The context response includes `core_id` when `hc server status` proves that a
+core is already running. Desktop API clients pass this value as `request.core_id`
+on create/open, including retries. It explicitly selects that core by identity
+when environment selectors are absent. The CLI checks the ID before mutation and
+rejects a mismatch. Refresh context after a connection change. Standalone human
+commands still require `HC_SOCKET` or `HC_SESSION`.
 
 Creation uses `wt switch --path ... --no-cd --no-hooks --format=json`. Worktrunk
 project hooks are skipped as a backend safety default; run trusted setup manually. The canonical

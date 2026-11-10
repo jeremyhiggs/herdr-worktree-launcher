@@ -31,7 +31,7 @@ export async function connectCLI(exec, machine = null) {
   const context = await invoke('context');
   if (context.protocol !== 1) throw new Error('Update herdr-worktree-launcher on the selected machine: unsupported API version.');
   const project = value => ({ ...value, machine });
-  const request = value => ({ ...value, machine, project: project(value.project) });
+  const request = value => ({ ...value, core_id: context.core_id, machine, project: project(value.project) });
   const result = value => ({ ...value, request: request(value.request) });
   return {
     machine, userHome: context.userHome,
@@ -44,8 +44,8 @@ export async function connectCLI(exec, machine = null) {
     fetch: (project, remote) => invoke('fetch', { project, remote }),
     destination: (project, name) => invoke('destination', { project, name }),
     prepare: async args => request(await invoke('prepare', args)),
-    create: async request => result(await invoke('create', { request })),
+    create: async value => result(await invoke('create', { request: request(value) })),
     inspect: async (request, options = {}) => result(await invoke('inspect', { request, ...options })),
-    open,
+    open: value => open(request(value)),
   };
 }

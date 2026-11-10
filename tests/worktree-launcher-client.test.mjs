@@ -6,7 +6,7 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
   const calls = [], project = { id: 'repo', path: '/code/sample' };
   const exec = async (command, args, options) => {
     const value = JSON.parse(args[2]); calls.push({ command, args, options, value });
-    const result = value.operation === 'context' ? { protocol: 1, userHome: '/fixture-home' }
+    const result = value.operation === 'context' ? { protocol: 1, userHome: '/fixture-home', core_id: 'app-core' }
       : value.operation === 'discover' ? [project]
       : value.operation === 'prepare' ? { ...value, path: '/worktree' }
       : value.operation === 'create' ? { kind: 'created', request: value.request, path: value.request.path }
@@ -16,10 +16,12 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
   const api = await connectCLI(exec, 'devbox');
   const [selected] = await api.discover({ project_root: '/code' });
   const prepared = await api.prepare({ project: selected, name: "feature/quote's", action: 'new' });
-  const result = await api.create(prepared); await api.open(result.request);
+  const result = await api.create({ ...prepared, core_id: 'stale-core' }); await api.open({ ...result.request, core_id: 'stale-core' });
   assert.equal(api.userHome, '/fixture-home'); assert.equal(result.request.machine, 'devbox'); assert.equal(result.request.project.machine, 'devbox');
   for (const call of calls) { assert.equal(call.command, 'herdr-worktree-launcher'); assert.equal(call.options.on, 'devbox'); assert.equal(call.args.length, 3); }
   assert.equal(calls.find(c => c.value.operation === 'prepare').value.name, "feature/quote's");
+  assert.equal(prepared.core_id, 'app-core');
+  for (const operation of ['create', 'open']) assert.equal(calls.find(c => c.value.operation === operation).value.request.core_id, 'app-core');
 });
 
 test('UI preserves CLI dependency/context errors and rejects incompatible or missing executables', async () => {

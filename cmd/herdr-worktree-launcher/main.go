@@ -127,6 +127,7 @@ type Launch struct {
 	Argv  []string `json:"argv"`
 }
 type Request struct {
+	CoreID   string  `json:"core_id,omitempty"`
 	Machine  any     `json:"machine,omitempty"`
 	Project  Project `json:"project"`
 	Action   string  `json:"action"`
@@ -746,8 +747,8 @@ func validateDestination(path string) error {
 	return nil
 }
 
-func preflight() error {
-	if os.Getenv("HC_SOCKET") == "" && os.Getenv("HC_SESSION") == "" {
+func preflight(expectedCore string) error {
+	if os.Getenv("HC_SOCKET") == "" && os.Getenv("HC_SESSION") == "" && expectedCore == "" {
 		return fail("context_missing", "Set HC_SOCKET or HC_SESSION to an already running local core before creating or opening a checkout.", "The launcher never starts or selects a default core.")
 	}
 	for _, program := range []string{"git", "wt", "hc"} {
@@ -755,9 +756,19 @@ func preflight() error {
 			return fail("dependency_missing", program+" is not on PATH.", "Install "+program+" and add it to PATH. Worktree management requires Worktrunk's wt.")
 		}
 	}
+	coreID, err := runningCoreID()
+	if err != nil {
+		return err
+	}
+	if expectedCore != "" && coreID != expectedCore {
+		return fail("core_unavailable", "The Herdr core connection changed. No worktree or session operation was started.", "Refresh Worktree Launcher to use the app's current core.")
+	}
+	return nil
+}
+func runningCoreID() (string, error) {
 	out, err := command("", "hc", "server", "status", "--json")
 	if err != nil {
-		return fail("core_unavailable", "The explicitly selected core is not running: "+err.Error(), "Start the intended core separately, then set HC_SOCKET or HC_SESSION to it.")
+		return "", fail("core_unavailable", "The selected core is not running: "+err.Error(), "Start the intended core separately, then reopen Worktree Launcher or set HC_SOCKET or HC_SESSION.")
 	}
 	var status struct {
 		PID  int `json:"pid"`
@@ -766,9 +777,9 @@ func preflight() error {
 		} `json:"core"`
 	}
 	if json.Unmarshal(out, &status) != nil || status.PID <= 0 || status.Core.ID == "" {
-		return fail("core_unavailable", "hc server status did not prove that the selected core is already running.", "Check HC_SOCKET or HC_SESSION and hc server status --json.")
+		return "", fail("core_unavailable", "hc server status did not prove that the selected core is already running.", "Check HC_SOCKET or HC_SESSION and hc server status --json.")
 	}
-	return nil
+	return status.Core.ID, nil
 }
 func prepare(in input) (Request, error) {
 	if in.Action != "new" && in.Action != "existing" {
@@ -911,7 +922,7 @@ func inspect(r Request, recover bool) Result {
 	return result
 }
 func create(r Request) (Result, error) {
-	if err := preflight(); err != nil {
+	if err := preflight(r.CoreID); err != nil {
 		return Result{}, err
 	}
 	if _, err := core("terminal.list", map[string]any{}); err != nil {
@@ -1128,7 +1139,7 @@ type OpenResult struct {
 }
 
 func openCheckout(r Request) (OpenResult, error) {
-	if err := preflight(); err != nil {
+	if err := preflight(r.CoreID); err != nil {
 		return OpenResult{}, err
 	}
 	result := inspect(r, true)
@@ -1252,7 +1263,8 @@ func api(in input) (any, error) {
 	switch in.Operation {
 	case "context":
 		home, err := os.UserHomeDir()
-		return map[string]any{"userHome": home, "protocol": 1, "machine": nil}, err
+		coreID, _ := runningCoreID()
+		return map[string]any{"userHome": home, "protocol": 1, "machine": nil, "core_id": coreID}, err
 	case "validateRoot":
 		return validateRoot(in.Config.ProjectRoot)
 	case "directories":
@@ -1481,7 +1493,7 @@ func run(args []string) (any, bool, error) {
 	if name == "" {
 		return nil, jsonOutput, errors.New("Supply a branch name.")
 	}
-	if err = preflight(); err != nil {
+	if err = preflight(""); err != nil {
 		return nil, jsonOutput, err
 	}
 	p, err := project(checkout, "")

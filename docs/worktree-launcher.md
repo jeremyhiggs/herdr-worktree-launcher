@@ -137,9 +137,9 @@ Install `herdr-worktree-launcher` and `wt` on the selected machine. Ensure Herdr
 
 ### Herdr context is missing or the core is unavailable
 
-Set `HC_SOCKET` or `HC_SESSION` to identify the intended running core. The CLI refuses to start or select a default core. A desktop UI call needs these variables in the executing core's environment, not only in an unrelated terminal. A remote call needs the remote core's context.
+For standalone commands, set `HC_SOCKET` or `HC_SESSION` to identify the intended running core. The desktop UI obtains the running core's ID through `hc` on the selected machine. It supplies that ID explicitly to the CLI, which rejects a different core before creation or opening. The UI does not require a manual environment export. The launcher never starts a core.
 
-Read-only project browsing remains available without core context. Creation and opening fail before mutation when context is missing or the selected core cannot be reached.
+Read-only project browsing remains available without core context. Creation and opening fail before mutation when context is missing, the selected core is unavailable, or its ID changes. If the connection changes, select **Refresh**.
 
 ### The project root is unavailable
 

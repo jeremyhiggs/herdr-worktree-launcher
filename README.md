@@ -92,7 +92,7 @@ Go is a build tool only. The CLI uses the Go standard library without third-part
 
 The repository includes `mise.toml` for Go and Worktrunk. If you use [mise](https://mise.jdx.dev/), run `mise install` first. Keep `wt` on the runtime `PATH`; the launcher reports a clear error if it is missing. Herdr supplies `hc` separately.
 
-The CLI requires **`HC_SOCKET` or `HC_SESSION`** to identify an already running local Herdr core. Run it from a Herdr terminal that exposes this context. It refuses to guess or start a default core. The desktop launcher has the same requirement: its core execution environment must expose the context. Do not point it at an unrelated core.
+Standalone commands require **`HC_SOCKET` or `HC_SESSION`** to identify an already running local Herdr core. The desktop launcher obtains the running core's ID through `hc` and passes it explicitly to the CLI. The CLI checks that the connection still matches before creation or opening. You do not need to set these variables for the desktop launcher. Neither route starts a core.
 
 The desktop UI delegates discovery, Git operations, program detection, and session creation to this CLI. For a remote target, install the binary and `wt` there too. Herdr routes the UI call; the CLI itself always operates locally.
 
@@ -288,7 +288,7 @@ Updates preserve saved roots and recovery records. Installation does not restart
 ## Need help?
 
 - **CLI unavailable:** install `herdr-worktree-launcher` and Worktrunk on the selected machine, and put both on its `PATH`.
-- **Missing Herdr context:** run from an environment with `HC_SOCKET` or `HC_SESSION` for the intended running core. The launcher refuses to guess.
+- **Missing Herdr context in the CLI:** set `HC_SOCKET` or `HC_SESSION` for the intended running core. The desktop launcher supplies its verified core ID automatically. If the core connection changes, select **Refresh**.
 - **No projects:** check the selected machine and root, then select **Refresh**.
 - **Cannot read a local folder:** check Herdr's permissions in System Settings → Privacy & Security → Files and Folders.
 - **Git succeeded but the space did not open:** select **Open created worktree** to retry without creating another checkout.

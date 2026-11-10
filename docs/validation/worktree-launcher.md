@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-09.
+Last updated: 2026-11-10.
 
 The launcher now uses a standalone Go CLI for repository and session operations. Earlier JavaScript backend measurements do not establish this implementation's performance.
 
@@ -12,11 +12,12 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Node tests | 84 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
-| `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.13 |
+| `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.14 |
+| Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |
 | Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, and worktree creation through the CLI |
 
-Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.13, and core 0.1.18.
+Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.14, and core 0.1.19.
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
@@ -45,7 +46,8 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | Worktrunk exits unsuccessfully after creating a checkout or branch | Preserve the artifact and report a complete checkout or partial outcome accurately. | Go: `TestWorktrunkFailureRetainsCheckoutOrBranchArtifact`. |
 | A descendant keeps Worktrunk output pipes open | Bound the wait and report an uncertain outcome. | Go: `TestWorktrunkUnclosedPipesHaveBoundedWaitAndUncertainOutcome`. |
 | Herdr session startup fails after Git creation | Preserve the checkout. An opening retry does not repeat Git creation. | Go: core-session test. CLI: agent/startup test. [UI model](../../tests/worktree-launcher-model.test.mjs): opening-retry tests. |
-| Core context, Worktrunk, or the selected core is unavailable | Reject before branch or destination creation. Do not start a default core. | Go: missing-context, unavailable-core, and core-list-failure tests. |
+| Standalone core context, Worktrunk, or the selected core is unavailable | Reject before branch or destination creation. Do not start a default core. | Go: missing-context, unavailable-core, and core-list-failure tests. |
+| UI runs without inherited core environment variables | Use its explicitly supplied running core ID. Reject mismatched IDs before branch creation or terminal RPCs. | Go: `TestAppCoreIdentityWithoutInheritedCoreEnvironment`, `TestAppCoreIdentityMismatchRefusesCreationAndOpening`. Client: core-ID propagation assertions. |
 | Worktrunk project hooks are configured | Skip those hooks during launcher creation. | Go: `TestWorktrunkProjectHooksAreSkipped`. |
 | Checkout location needs inference or an override | Infer from the current repository or subdirectory. Honor `--checkout`. Reject an unspecified checkout outside Git. | CLI: checkout-inference test. |
 | Paths contain spaces, quotes, or symlinks | Preserve literal paths and reject unsafe destination ancestry. Canonicalize a symlinked home. | Go: API/path, discovery, validation, and symlinked-home tests. CLI fixtures contain a quoted checkout path. |
@@ -125,6 +127,6 @@ The README images come from an isolated sample installation. The sample capture 
 
 Before release, check shortcut activation, Esc, Tab, arrows, Enter, root browsing/saving, text selection, theme changes, and each installed agent. Repeat remote creation with the Go binary and Worktrunk installed on the target. Earlier remote JavaScript adapter checks do not validate the new executable.
 
-The UI execution environment must expose its own running core through `HC_SOCKET` or `HC_SESSION`. A normal app started without either variable receives a context error before creation; this work does not guess that app's core socket.
+The desktop UI passes a verified running core ID to the CLI. Go regression tests cover creation and opening without inherited `HC_SOCKET` or `HC_SESSION`, and rejection of a mismatched core ID. Client tests cover propagation of the current ID over stale request context. Standalone commands still require an explicit environment selector.
 
 Documentation and binaries are prepared locally. No release, tag, or publication is implied.

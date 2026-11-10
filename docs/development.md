@@ -141,6 +141,8 @@ GOOS=linux GOARCH=amd64 ./scripts/build-cli.sh --output dist/herdr-worktree-laun
 
 Build outputs are ignored. Node and pnpm remain development tools for the UI tests and mod installation. CLI tests build the actual Go executable and use real Git/Worktrunk with a core protocol fixture. Go tests cover Git safety and core session matching.
 
-`HC_SOCKET` or `HC_SESSION` must identify a running core before creation or opening. The launcher never starts a core. Tests use isolated environments. Worktrunk project hooks are disabled for backend calls.
+Standalone commands require `HC_SOCKET` or `HC_SESSION`. The UI reads `core_id` from the context API and supplies it in creation and opening requests. The CLI checks that the running core still has that ID, including when environment selectors are absent. A mismatched ID fails before mutation.
+
+The launcher never starts a core. Tests use isolated environments. Worktrunk project hooks are disabled for backend calls.
 
 Use `herdr-worktree-launcher --skill` for JSON operations and response shapes. API requests use one argument containing JSON, without shell interpolation. The UI only selects and focuses the returned terminal; it does not create sessions itself.
