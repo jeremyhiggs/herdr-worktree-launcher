@@ -36,9 +36,10 @@ Errors use `{error:{kind,message,hint}}` with nonzero exit status.
 
 The context response includes `core_id` when `hc server status` proves that a
 core is already running. Desktop API clients pass this value as `request.core_id`
-on create/open, including retries. It explicitly selects that core by identity
-when environment selectors are absent. The CLI checks the ID before mutation and
-rejects a mismatch. Refresh context after a connection change. Standalone human
+on create/open, including retries. `hc` resolves its connection using its
+environment, configuration, and defaults. The CLI compares the running core's ID
+with `request.core_id` before mutation and rejects a mismatch. Refresh context
+after a connection change. Standalone human
 commands still require `HC_SOCKET` or `HC_SESSION`.
 
 Creation uses `wt switch --path ... --no-cd --no-hooks --format=json`. Worktrunk
