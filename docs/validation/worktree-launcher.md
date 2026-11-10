@@ -21,7 +21,7 @@ Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr ap
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
-The GitHub workflows use the locally verified scripts. The recent recovery changes are local commits and are not yet pushed. Hosted results for those changes are not verified. The available GitHub connection could not read workflow runs during this review.
+The GitHub workflows use the locally verified scripts. [Hosted run `22d4972`](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42829229966) passed Linux tests and lint. Its macOS CLI tests failed because their restricted `PATH` selected Apple Git 2.39.5, below Worktrunk's requirement. The Packages workflow passed. The fixture correction still needs a new hosted run.
 
 ## Automated worktree scenarios
 
@@ -90,6 +90,8 @@ The model also tests duplicate-submit prevention, cancellation, changed checkout
 | Actual Claude Code, Pi, OpenCode, or Codex startup | No | CI checks detection and launch arguments with fixtures. Installed agents require separate acceptance checks. |
 
 Both workflows trigger on pushes, pull requests, and manual dispatches. CI uses `mise.toml` for pinned tools. The test script checks prerequisites before running either suite.
+
+CLI test fixtures preserve the selected `git` and `wt` executables in their restricted `PATH`. A regression assertion compares the fixture's Git version with the host selection. This prevents a fallback to an older system Git on macOS.
 
 Run the same tests locally:
 

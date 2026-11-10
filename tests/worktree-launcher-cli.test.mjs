@@ -18,7 +18,9 @@ async function fixture(t) {
   const home = join(dir, 'home'), bin = join(dir, 'bin'), project = join(dir, "projects/sample's checkout"), elsewhere = join(dir, 'elsewhere');
   for (const path of [home, bin, project, elsewhere]) await mkdir(path, { recursive: true });
   await symlink(process.execPath, join(bin, 'node'));
-  await symlink((await execute('/usr/bin/which', ['wt'])).stdout.trim(), join(bin, 'wt'));
+  for (const command of ['git', 'wt']) {
+    await symlink((await execute('/usr/bin/which', [command])).stdout.trim(), join(bin, command));
+  }
   const state = join(dir, 'core.json'); await writeFile(state, JSON.stringify({ terminals: [], calls: [] }));
   await writeFile(join(bin, 'hc'), `#!/usr/bin/env node
 const fs=require('node:fs'), readline=require('node:readline');
@@ -51,6 +53,9 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 
 test('CLI runs from elsewhere, preserves the canonical checkout and adds fresh tabs to the existing worktree space', async t => {
   const f = await fixture(t);
+  const hostGit = await execute('git', ['--version']);
+  const fixtureGit = await execute('git', ['--version'], { env: f.env });
+  assert.equal(fixtureGit.stdout, hostGit.stdout, 'Restricted fixture PATH must preserve the selected Git version');
   await writeFile(join(f.project, 'untracked.txt'), 'keep');
   const before = await f.git('status', '--porcelain');
   const first = JSON.parse((await f.run(['new', 'feature/example', '--checkout', f.project, '--base', 'main', '--json'])).stdout);
