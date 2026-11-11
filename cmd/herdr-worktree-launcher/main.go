@@ -747,14 +747,20 @@ func validateDestination(path string) error {
 	return nil
 }
 
-func preflight(expectedCore string) error {
-	if os.Getenv("HC_SOCKET") == "" && os.Getenv("HC_SESSION") == "" && expectedCore == "" {
-		return fail("context_missing", "Set HC_SOCKET or HC_SESSION to an already running local core before creating or opening a checkout.", "The launcher never starts or selects a default core.")
-	}
+func dependencies() error {
 	for _, program := range []string{"git", "wt", "hc"} {
 		if _, err := exec.LookPath(program); err != nil {
 			return fail("dependency_missing", program+" is not on PATH.", "Install "+program+" and add it to PATH. Worktree management requires Worktrunk's wt.")
 		}
+	}
+	return nil
+}
+func preflight(expectedCore string) error {
+	if os.Getenv("HC_SOCKET") == "" && os.Getenv("HC_SESSION") == "" && expectedCore == "" {
+		return fail("context_missing", "Set HC_SOCKET or HC_SESSION to an already running local core before creating or opening a checkout.", "The launcher never starts or selects a default core.")
+	}
+	if err := dependencies(); err != nil {
+		return err
 	}
 	coreID, err := runningCoreID()
 	if err != nil {
@@ -1236,13 +1242,13 @@ func openCheckout(r Request) (OpenResult, error) {
 	return OpenResult{r.Path, t.Address, space, tab, key}, nil
 }
 
-func fetch(p Project, remote string) ([]Ref, error) {
+func validateRemote(p Project, remote string) error {
 	if err := validateProject(p); err != nil {
-		return nil, err
+		return err
 	}
 	text, err := git(p.Path, "remote")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	valid := false
 	for _, name := range strings.Fields(text) {
@@ -1251,9 +1257,15 @@ func fetch(p Project, remote string) ([]Ref, error) {
 		}
 	}
 	if !valid {
-		return nil, errors.New("Select a configured Git remote.")
+		return errors.New("Select a configured Git remote.")
 	}
-	if _, err = git(p.Path, "fetch", "--no-tags", "--no-recurse-submodules", "--", remote); err != nil {
+	return nil
+}
+func fetch(p Project, remote string) ([]Ref, error) {
+	if err := validateRemote(p, remote); err != nil {
+		return nil, err
+	}
+	if _, err := git(p.Path, "fetch", "--no-tags", "--no-recurse-submodules", "--", remote); err != nil {
 		return nil, err
 	}
 	return choices(p)
@@ -1380,7 +1392,7 @@ func run(args []string) (any, bool, error) {
 		if strings.HasPrefix(arg, "--") {
 			key, value, has := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
 			switch key {
-			case "help", "skill", "version", "json", "attach":
+			case "help", "skill", "version", "json", "attach", "dry-run":
 				if has {
 					return nil, false, fmt.Errorf("Option --%s takes no value", key)
 				}
@@ -1419,6 +1431,9 @@ func run(args []string) (any, bool, error) {
 	}
 	isAPI := len(positionals) > 0 && positionals[0] == "api"
 	if isAPI {
+		if flags["dry-run"] {
+			return nil, true, errors.New("--dry-run applies only to new and open commands, not API operations.")
+		}
 		if _, ok := values["fetch"]; ok {
 			return nil, true, errors.New("For API requests, use the fetch operation before prepare/create.")
 		}
@@ -1504,7 +1519,12 @@ func run(args []string) (any, bool, error) {
 	if name == "" {
 		return nil, jsonOutput, errors.New("Supply a branch name.")
 	}
-	if err = preflight(""); err != nil {
+	if flags["dry-run"] {
+		err = dependencies()
+	} else {
+		err = preflight("")
+	}
+	if err != nil {
 		return nil, jsonOutput, err
 	}
 	p, err := project(checkout, "")
@@ -1513,7 +1533,13 @@ func run(args []string) (any, bool, error) {
 	}
 	var refs []Ref
 	if remote, requested := values["fetch"]; requested {
-		refs, err = fetch(p, remote)
+		if flags["dry-run"] {
+			if err = validateRemote(p, remote); err == nil {
+				refs, err = choices(p)
+			}
+		} else {
+			refs, err = fetch(p, remote)
+		}
 	} else {
 		refs, err = choices(p)
 	}
@@ -1560,6 +1586,9 @@ func run(args []string) (any, bool, error) {
 		return name
 	}())
 	if err != nil {
+		if flags["dry-run"] && values["fetch"] != "" {
+			return nil, jsonOutput, fmt.Errorf("%w Dry-run did not fetch; branch checks use current local refs.", err)
+		}
 		return nil, jsonOutput, err
 	}
 	in := input{Project: p, Action: "existing", Ref: selected.Ref, Checkout: selected.Checkout}
@@ -1573,6 +1602,39 @@ func run(args []string) (any, bool, error) {
 		return nil, jsonOutput, err
 	}
 	r.Launch = Launch{Key: key, Label: key, Argv: argv}
+	if flags["dry-run"] {
+		id, err := identity(checkout)
+		if err != nil {
+			return nil, jsonOutput, err
+		}
+		worktreeAction := "create"
+		if r.Reuse {
+			worktreeAction = "reuse"
+		}
+		plan := map[string]any{
+			"dry_run": true, "checkout": id.Top, "project": p.Path, "action": action,
+			"branch": r.Name, "ref": r.Ref, "commit": r.Commit, "path": r.Path,
+			"worktree_action": worktreeAction, "program": key, "argv": argv,
+			"fetch": values["fetch"], "refs_state": "local", "session_action": "new_terminal_and_tab",
+			"space_action": "reuse_matching_or_create", "ensure_primary_space": r.Path != p.Path, "core_checked": false, "attach": flags["attach"],
+		}
+		if jsonOutput {
+			return plan, true, nil
+		}
+		fmt.Printf("Dry run (no changes)\nCheckout: %s\nProject: %s\nAction: %s\nBranch: %s\nSource: %s (%s)\nWorktree: %s %s\nProgram: %s %q\n", id.Top, p.Path, action, r.Name, r.Ref, r.Commit, worktreeAction, r.Path, key, argv)
+		if remote := values["fetch"]; remote != "" {
+			fmt.Printf("Fetch: would fetch %s before resolving branches; this preview uses current local refs.\n", remote)
+		}
+		fmt.Println("Session: open a fresh terminal and tab; reuse a matching checkout space or create one.")
+		if r.Path != p.Path {
+			fmt.Printf("Primary space: ensure a shell space for %s.\n", p.Path)
+		}
+		if flags["attach"] {
+			fmt.Println("Attach: attach this terminal after opening the session.")
+		}
+		fmt.Println("Core: not contacted; a real run requires HC_SOCKET or HC_SESSION and a running core.")
+		return nil, false, nil
+	}
 	r.Attempt = uuid()
 	result, err := create(r)
 	if err != nil {

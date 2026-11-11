@@ -8,6 +8,7 @@ Usage: herdr-worktree-launcher new|open BRANCH [--checkout PATH] [options]
   --base REF        Base branch for new (default: selected checkout's branch)
   --fetch REMOTE    Fetch one configured remote before branch selection and wt
   --program NAME    shell, claude, pi, opencode or codex (default: shell)
+  --dry-run         Validate and print the plan without changing Git or sessions
   --json            Print session information as JSON
   --attach          Attach foreground stdin to the new session (without --json)
   --skill           Print agent instructions
@@ -27,6 +28,13 @@ hooks. Run trusted setup manually afterwards. No files or branches are deleted.
 If terminal startup fails, the checkout is preserved; retry with open BRANCH.
 Fetch failure stops creation. Omit --fetch to use locally available refs.
 Opening a linked checkout also ensures a shell space for its primary checkout.
+
+Dry-run checks refs, names, paths, installed programs and runtime dependencies.
+It never fetches, invokes wt, or contacts hc. No running core or HC selector is
+required for a preview. With --fetch, it lists the planned fetch but validates
+current local refs; fetched branches and commits can differ in a real run.
+Use --dry-run --json for a machine-readable plan. Invalid plans exit nonzero.
+The dry-run flag applies to new/open commands, not API operations.
 
 JSON API: herdr-worktree-launcher api --request '{"operation":"context"}'
 Successful API responses are raw JSON; failures are {"error":{"kind","message","hint"}}.

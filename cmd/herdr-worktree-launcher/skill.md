@@ -21,6 +21,17 @@ origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.
 
+Use `--dry-run` with `new` or `open` to validate and print the plan without mutation.
+Add `--json` for fields including checkout, project, action, branch, ref, commit,
+path, worktree_action (create/reuse), program, argv, fetch, and session_action.
+The plan uses local refs and reports `core_checked:false`. It needs runtime
+dependencies on PATH, but no running core or HC selector. It never calls `wt`,
+`hc`, the selected program, or Git fetch. With `--fetch`, the plan lists that
+remote without contacting it; the actual run resolves refs again after fetching.
+Unknown or ambiguous refs, invalid or duplicate branch names, occupied destinations,
+unavailable checkouts, and missing programs fail with nonzero status in both modes.
+The API rejects `--dry-run`; use the read-only prepare operation for an API preview.
+
 For human commands, `--fetch REMOTE` fetches only that configured remote before
 resolving branch choices and invoking Worktrunk. Fetch failure stops creation.
 Without the flag, refs are not fetched. API callers use the existing fetch

@@ -9,7 +9,7 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 87 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 89 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
@@ -21,7 +21,7 @@ Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr ap
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
-The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The current-space defaults still need a hosted run.
+The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The current-space defaults and dry-run changes still need a hosted run.
 
 ## Automated worktree scenarios
 
@@ -54,6 +54,9 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | Initial suggestions arrive after a manual choice, machine change, or close | Ignore the stale suggestion and preserve the user's choice. | UI controls: late initial checkout suggestions test. |
 | Active checkout is unavailable, excluded, or detached | Keep manual selection available. Detached HEAD preselects only the project. | UI controls: unavailable/excluded/detached test. CLI: detached selection assertion. |
 | CLI creates from a linked checkout or subdirectory without `--base` | Use that checkout's branch. Honor explicit `--checkout` and `--base` overrides. Require `--base` for detached HEAD. | CLI: checkout-inference test with distinct primary and linked tips. |
+| Preview new, existing available, or checked-out branches with `--dry-run` | Print a text or JSON plan. Preserve refs, worktrees, index, staged/unstaged/untracked files, and sessions. Never invoke Worktrunk, Herdr, or the selected agent. | CLI: dry-run preview test with runtime command markers. |
+| Preview with `--fetch` or without a running core | List the fetch without performing it. Use current local refs and report that core availability is unchecked. Still require runtime dependencies. | CLI: dry-run preview test. |
+| Invalid plans in normal and dry-run modes | Reject unknown/ambiguous branches or bases, invalid/duplicate names, occupied destinations, unavailable checkouts, invalid remotes, and missing programs before worktree or session creation. | CLI: normal/dry-run failure-condition table. |
 | Paths contain spaces, quotes, or symlinks | Preserve literal paths and reject unsafe destination ancestry. Canonicalize a symlinked home. | Go: API/path, discovery, validation, and symlinked-home tests. CLI fixtures contain a quoted checkout path. |
 
 ## Automated recovery scenarios
@@ -109,7 +112,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 87 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 89 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 

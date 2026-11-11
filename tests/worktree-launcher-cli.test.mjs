@@ -123,6 +123,69 @@ test('CLI installation refuses unrelated commands and installation folders', asy
   await assert.rejects(execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli, '--update'], { env: f.env }), /Refusing to replace a directory/);
 });
 
+test('CLI dry-run previews creation, fetch and existing-worktree reuse without invoking wt or hc', async t => {
+  const f = await fixture(t), marker = join(f.dir, 'unexpected-runtime-call');
+  for (const command of ['wt', 'hc']) {
+    await rm(join(f.bin, command));
+    await writeFile(join(f.bin, command), '#!/bin/sh\n: > "$WL_TEST_MARKER"\nexit 1\n', { mode: 0o755 });
+  }
+  await writeFile(join(f.bin, 'codex'), '#!/bin/sh\n: > "$WL_TEST_MARKER"\nexit 1\n', { mode: 0o755 });
+  await f.git('branch', 'available');
+  await writeFile(join(f.project, 'staged.txt'), 'staged'); await f.git('add', 'staged.txt');
+  await writeFile(join(f.project, 'staged.txt'), 'unstaged'); await writeFile(join(f.project, 'untracked.txt'), 'keep');
+  const snapshot = () => Promise.all([f.git('rev-parse', 'HEAD'), f.git('for-each-ref'), f.git('worktree', 'list', '--porcelain'), f.git('status', '--porcelain'), f.git('diff'), f.git('diff', '--cached')]);
+  const before = await snapshot(), env = { HC_SOCKET: '', HC_SESSION: '', WL_TEST_MARKER: marker };
+  const plan = JSON.parse((await f.run(['new', 'feature/preview', '--checkout', f.project, '--program', 'codex', '--fetch', 'origin', '--dry-run', '--json'], env)).stdout);
+  assert.equal(plan.dry_run, true); assert.equal(plan.checkout, f.project); assert.equal(plan.project, f.project);
+  assert.equal(plan.action, 'new'); assert.equal(plan.branch, 'feature/preview'); assert.equal(plan.ref, 'refs/heads/main');
+  assert.equal(plan.commit, await f.git('rev-parse', 'main')); assert.equal(plan.path, join(f.home, '.herdr/worktrees/sample/feature-preview'));
+  assert.equal(plan.worktree_action, 'create'); assert.equal(plan.program, 'codex'); assert.equal(plan.fetch, 'origin');
+  assert.equal(plan.session_action, 'new_terminal_and_tab'); assert.equal(plan.ensure_primary_space, true);
+  assert.equal(plan.core_checked, false);
+  const opened = JSON.parse((await f.run(['open', 'main', '--checkout', f.project, '--dry-run', '--json'], env)).stdout);
+  assert.equal(opened.worktree_action, 'reuse'); assert.equal(opened.path, f.project); assert.equal(opened.ensure_primary_space, false);
+  const available = JSON.parse((await f.run(['open', 'available', '--checkout', f.project, '--dry-run', '--json'], env)).stdout);
+  assert.equal(available.worktree_action, 'create'); assert.equal(available.branch, 'available');
+  const text = (await f.run(['new', 'feature/preview', '--checkout', f.project, '--dry-run'], env)).stdout;
+  for (const value of ['Dry run', 'refs/heads/main', 'feature/preview', plan.path, 'fresh terminal and tab']) assert(text.includes(value), value);
+  await assert.rejects(f.run(['api', '--dry-run', '--request', '{"operation":"open"}'], env), /dry-run.*new.*open/i);
+  await assert.rejects(f.run(['new', 'valid', '--checkout', f.project, '--base', 'origin/server-only', '--fetch', 'origin', '--dry-run'], env), /Dry-run did not fetch.*local refs/);
+  await assert.rejects(f.run(['new', 'valid', '--dry-run=true'], env), /takes no value/);
+  assert.deepEqual(await snapshot(), before);
+  await assert.rejects(readFile(marker), { code: 'ENOENT' });
+  await assert.rejects(readFile(join(f.home, '.herdr')), { code: 'ENOENT' });
+  assert.equal((await f.core()).terminals.length, 0);
+  await rm(join(f.bin, 'wt'));
+  await assert.rejects(f.run(['new', 'valid', '--checkout', f.project, '--dry-run'], { ...env, PATH: f.bin }), /wt is not on PATH/);
+});
+
+test('CLI normal and dry-run commands reject invalid refs, branch collisions and unavailable destinations before mutation', async t => {
+  const f = await fixture(t), occupied = join(f.home, '.herdr/worktrees/sample/occupied'), missing = join(f.dir, 'missing-worktree');
+  await mkdir(occupied, { recursive: true });
+  await f.git('remote', 'add', 'upstream', 'https://code.example.invalid/upstream/sample.git');
+  for (const remote of ['origin', 'upstream']) await f.git('update-ref', `refs/remotes/${remote}/ambiguous`, 'main');
+  await f.git('worktree', 'add', '-b', 'missing', missing, 'main'); await rm(missing, { recursive: true });
+  const snapshot = () => Promise.all([f.git('for-each-ref'), f.git('worktree', 'list', '--porcelain'), f.git('status', '--porcelain')]);
+  const before = await snapshot();
+  for (const flag of [[], ['--dry-run']]) {
+    for (const [args, error] of [
+      [['open', 'unknown'], /unavailable/],
+      [['open', 'ambiguous'], /ambiguous/],
+      [['new', 'valid', '--base', 'unknown'], /unavailable/],
+      [['new', 'valid', '--base', 'ambiguous'], /ambiguous/],
+      [['new', 'bad name'], /valid branch name|not a valid branch name/],
+      [['new', 'main'], /already exists/],
+      [['new', 'ambiguous'], /already exists/],
+      [['new', 'occupied'], /occupied/],
+      [['open', 'missing'], /unavailable/],
+      [['new', 'valid', '--fetch', 'unknown-remote'], /configured Git remote/],
+      [['new', 'valid', '--program', 'pi'], /not installed/],
+    ]) await assert.rejects(f.run([...args, '--checkout', f.project, ...flag]), error);
+    assert.deepEqual(await snapshot(), before);
+  }
+  assert.equal((await f.core()).terminals.length, 0);
+});
+
 test('CLI fetches only the requested remote before resolving a new base or existing branch', async t => {
   for (const action of ['new', 'open']) {
     const f = await fixture(t), origin = join(f.dir, 'origin.git'), upstream = join(f.dir, 'upstream.git');

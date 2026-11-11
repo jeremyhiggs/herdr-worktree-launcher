@@ -150,6 +150,34 @@ If session startup fails after Git succeeds, the CLI reports the preserved check
 
 Run `herdr-worktree-launcher --help` for all flags, or `--skill` for the agent API and safety contract. Worktrunk project hooks are skipped; run trusted setup commands yourself after creation. The installer accepts `--prefix DIRECTORY` for a different installation location.
 
+### Preview a command
+
+Add `--dry-run` to see the inferred checkout, source branch and commit, destination, program, and session action:
+
+```sh
+herdr-worktree-launcher new feature/follow-up --dry-run
+herdr-worktree-launcher open feature/payments --dry-run
+herdr-worktree-launcher new feature/follow-up --program codex --dry-run --json
+```
+
+The preview shows whether it would create a worktree or reuse an existing folder. It describes the fresh terminal and tab, including primary-space setup when needed. Add `--json` for a machine-readable plan.
+
+Dry-run checks Git refs, branch names, destinations, programs, and runtime dependencies. It does not change Git, fetch, invoke Worktrunk, or contact Herdr. A running core and `HC_SOCKET` or `HC_SESSION` are required only for a real run.
+
+With `--fetch REMOTE`, dry-run lists the planned fetch and checks current local refs. It does not verify remote access or discover server-only branches. A real run fetches first, so its source commit can differ.
+
+Invalid plans exit with a nonzero status in both modes:
+
+| Condition | Result |
+| --- | --- |
+| Unknown branch for `open`, or unknown base for `new` | Stop and ask you to fetch or correct the ref. |
+| Ambiguous short branch name | Stop and ask for the remote-qualified name. |
+| Invalid new branch name, or a name that already exists | Stop before creation. |
+| Occupied destination or unavailable existing checkout | Stop without replacing files or repairing Git automatically. |
+| Invalid remote, unavailable program, or missing dependency | Stop before creation. |
+
+Dry-run validates a snapshot. A real run repeats validation and can still fail during fetching, filesystem writes, Worktrunk creation, or session startup.
+
 ## Create your first worktree
 
 1. Press **⌘⇧G**, or your custom shortcut, to open **Worktree Launcher**.
