@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-11.
 
 The launcher now uses a standalone Go CLI for repository and session operations. Earlier JavaScript backend measurements do not establish this implementation's performance.
 
@@ -9,10 +9,10 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 84 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 87 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
-| `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.14 |
+| `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
 | Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |
 | Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, and worktree creation through the CLI |
@@ -21,7 +21,7 @@ Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr ap
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
-The GitHub workflows use the locally verified scripts. [Hosted run `22d4972`](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42829229966) passed Linux tests and lint. Its macOS CLI tests failed because their restricted `PATH` selected Apple Git 2.39.5, below Worktrunk's requirement. The Packages workflow passed. The fixture correction still needs a new hosted run.
+The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The current-space defaults still need a hosted run.
 
 ## Automated worktree scenarios
 
@@ -50,6 +50,10 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | UI runs without inherited core environment variables | Use its explicitly supplied running core ID. Reject mismatched IDs before branch creation or terminal RPCs. | Go: `TestAppCoreIdentityWithoutInheritedCoreEnvironment`, `TestAppCoreIdentityMismatchRefusesCreationAndOpening`. Client: core-ID propagation assertions. |
 | Worktrunk project hooks are configured | Skip those hooks during launcher creation. | Go: `TestWorktrunkProjectHooksAreSkipped`. |
 | Checkout location needs inference or an override | Infer from the current repository or subdirectory. Honor `--checkout`. Reject an unspecified checkout outside Git. | CLI: checkout-inference test. |
+| UI opens from a local or remote space | Preselect its discovered project by Git identity and use that checkout's branch as the base. Leave the branch name empty. | [UI controls](../../tests/worktree-launcher-ui.test.mjs): active-space preselection test. Client: machine routing assertions. CLI: selection API assertions. |
+| Initial suggestions arrive after a manual choice, machine change, or close | Ignore the stale suggestion and preserve the user's choice. | UI controls: late initial checkout suggestions test. |
+| Active checkout is unavailable, excluded, or detached | Keep manual selection available. Detached HEAD preselects only the project. | UI controls: unavailable/excluded/detached test. CLI: detached selection assertion. |
+| CLI creates from a linked checkout or subdirectory without `--base` | Use that checkout's branch. Honor explicit `--checkout` and `--base` overrides. Require `--base` for detached HEAD. | CLI: checkout-inference test with distinct primary and linked tips. |
 | Paths contain spaces, quotes, or symlinks | Preserve literal paths and reject unsafe destination ancestry. Canonicalize a symlinked home. | Go: API/path, discovery, validation, and symlinked-home tests. CLI fixtures contain a quoted checkout path. |
 
 ## Automated recovery scenarios
@@ -105,7 +109,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 84 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 87 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 
@@ -114,6 +118,8 @@ Other automated coverage includes discovery filters, repository naming, remote-r
 The native sample uses separate home, app, core-session, socket, shell, and XDG directories. It exercises the production view, model, and executable with disposable repositories and bare remotes. It does not use personal projects or restart the normal app/core.
 
 The fetch scene discovers a server-only branch from the selected remote. Existing-worktree opening preserves the worktree list. Reopening that checkout adds a fresh tab in the same space. New-branch creation opens a focused shell in its worktree.
+
+A separate native check opened the launcher from a linked-checkout subdirectory. It preselected the discovered project and `feature/context` base, with an empty new-branch name. This used the freshly built CLI and programmatic form-state assertions. Connected-machine defaults remain fixture-tested.
 
 The headless check installs a copied executable outside the source checkout. With Node and Bun absent from its runtime PATH, it creates sessions while the desktop is closed. The desktop later adopts those terminals.
 

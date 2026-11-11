@@ -8,7 +8,7 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 const modules = {
   'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
   'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
-  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>[],panes=null,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
+  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>globalThis.launcherSpaces,panes=null,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
   resolve(specifier, context, next) { return Object.hasOwn(modules, specifier) ? { url: `native:${specifier}`, shortCircuit: true } : next(specifier, context); },
@@ -16,8 +16,9 @@ registerHooks({
 });
 const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
-function keyboardView(phase = 'editing') {
+function keyboardView(phase = 'editing', spaces = []) {
   globalThis.launcherClosedOverlays = [];
+  globalThis.launcherSpaces = spaces;
   const handlers = new Map(), bindings = [], opacities = [], focus = [];
   const nativeWindow = { active: false, activations: 0, activate_window() { this.active = true; this.activations++; }, is_window_active() { return this.active; } };
   globalThis.window = nativeWindow;
@@ -52,6 +53,80 @@ test('opening focuses and activates the launcher before slow project loading, so
   pressEscape(); assert.equal(view.model.closed, true);
   release(); await pending;
   assert.deepEqual(globalThis.launcherClosedOverlays, ['fixture-overlay']);
+});
+
+test('opening preselects the active space repository and checkout branch on its machine', async () => {
+  for (const machine of [null, 'devbox']) {
+    const { view, initialWork } = keyboardView('loading', [{ active: true, machine, folder: '/checkouts/feature/src' }]);
+    const project = { id: '/projects/app/.git', path: '/projects/app', label: 'team/app', machine };
+    const base = { ref: 'refs/heads/feature/current', name: 'feature/current', label: 'feature/current · local' };
+    const calls = [], focused = [];
+    view.model.config = async on => { assert.equal(on, machine); return { project_root: '/projects' }; };
+    view.model.listAgents = async () => [];
+    view.model.connect = async on => {
+      assert.equal(on, machine);
+      return {
+        discover: async () => [project],
+        selection: async path => { calls.push(path); return { project: { ...project, label: 'different canonical label' }, ref: base.ref }; },
+        choices: async () => [base], remotes: async () => [],
+      };
+    };
+    for (const field of ['project', 'ref', 'name']) view.inputs[field].focus = () => focused.push(field);
+    await initialWork(null, () => {});
+    assert.equal(view.model.project, project, 'Match canonical repository identity, not folder or label');
+    assert.equal(view.model.ref, base);
+    assert.equal(view.inputs.project.value(), 'team/app');
+    assert.equal(view.inputs.ref.value(), base.label);
+    assert.deepEqual(calls, ['/checkouts/feature/src']);
+    assert.deepEqual(focused, ['name']);
+    assert.equal(view.model.name, ''); assert.equal(view.model.canCreate, false);
+    view.model.selectRef(null); // The selection remains an editable suggestion.
+    assert.equal(view.model.ref, null);
+  }
+});
+
+test('unavailable, excluded, and detached active checkouts leave manual choices available', async () => {
+  for (const scenario of ['unavailable', 'excluded', 'detached']) {
+    const { view, initialWork } = keyboardView('loading', [{ active: true, machine: null, folder: '/checkout' }]);
+    const project = { id: 'repo', path: '/projects/app', label: 'app' };
+    view.model.config = async () => ({ project_root: '/projects' });
+    view.model.listAgents = async () => [];
+    view.model.connect = async () => ({
+      discover: async () => [project], choices: async () => [], remotes: async () => [],
+      selection: async () => {
+        if (scenario === 'unavailable') throw new Error('Not a Git repository');
+        return { project: scenario === 'excluded' ? { id: 'another-repo' } : project, ref: '' };
+      },
+    });
+    await initialWork(null, () => {});
+    assert.equal(view.model.project, scenario === 'detached' ? project : null);
+    assert.equal(view.model.ref, null); assert.equal(view.model.error, '');
+    assert.equal(view.model.phase, 'editing');
+  }
+});
+
+test('late initial checkout suggestions cannot replace manual choices, cross machines, or reopen a closed form', async () => {
+  for (const change of ['project', 'machine', 'close']) {
+    const { view, initialWork } = keyboardView('loading', [{ active: true, machine: null, folder: '/checkout' }]);
+    const project = { id: 'repo', path: '/projects/app', label: 'app' }, other = { id: 'other', path: '/projects/other', label: 'other' };
+    let release, started;
+    const waiting = new Promise(resolve => { started = resolve; });
+    view.model.config = async () => ({ project_root: '/projects' }); view.model.listAgents = async () => [];
+    view.model.connect = async () => ({
+      discover: async () => [project, other], choices: async () => [], remotes: async () => [],
+      selection: () => { started(); return new Promise(resolve => { release = resolve; }); },
+    });
+    const pending = initialWork(null, () => {});
+    await waiting;
+    if (change === 'project') await view.model.selectProject(other);
+    else if (change === 'machine') await view.model.selectMachine('other-machine');
+    else view.model.close();
+    release({ project, ref: 'refs/heads/main' }); await pending;
+    assert.equal(view.model.project, change === 'project' ? other : null);
+    assert.equal(view.model.ref, null);
+    assert.equal(view.model.machine, change === 'machine' ? 'other-machine' : null);
+    assert.equal(view.model.closed, change === 'close');
+  }
 });
 
 test('inactive launcher windows dim and regain full opacity without stealing focus', () => {

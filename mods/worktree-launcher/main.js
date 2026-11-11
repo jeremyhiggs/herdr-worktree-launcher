@@ -13,6 +13,7 @@ function selectableText(id, text) {
 
 export default class WorktreeLauncher extends View {
   init(_props, cx) {
+    const space = spaces().find(s => s.active);
     this.handle = cx.focus_handle();
     this.handle.focus();
     this.scroll = VirtualListScrollHandle.new();
@@ -46,7 +47,7 @@ export default class WorktreeLauncher extends View {
     const config = createConfigStore(readTextFile, writeTextFile, `${appHome()}/data/worktree-launcher-config.json`, `${appHome()}/mods/worktree-launcher/config.json`);
     const recordPath = `${appHome()}/data/worktree-launcher-operation.json`;
     this.model = new WorktreeModel({
-      machine: spaces().find(s => s.active)?.machine ?? null,
+      machine: space?.machine ?? null,
       connect: machine => connectCLI(exec, machine),
       listAgents: async machine => listCLIPrograms(exec, machine, await knownAgents({ on: machine }).catch(() => [])),
       config: machine => config.get(machine),
@@ -56,11 +57,29 @@ export default class WorktreeLauncher extends View {
     this.showChoice('machine', this.model.machine ?? 'Local');
     this.task(cx, async (_open, changed) => {
       window.activate_window();
-      const pending = this.model.refresh(changed), generation = this.model.generation;
+      const pending = this.model.refresh(changed);
+      let generation = this.model.generation;
       await pending;
       if (this.model.closed || generation !== this.model.generation) return;
+      if (space?.folder && this.model.git) {
+        const selection = await this.model.git.selection(space.folder).catch(() => null);
+        if (this.model.closed || generation !== this.model.generation) return;
+        const project = this.model.projects.find(row => row.id === selection?.project.id);
+        if (project) {
+          const selecting = this.model.selectProject(project);
+          generation = this.model.generation;
+          await selecting;
+          if (this.model.closed || generation !== this.model.generation) return;
+          this.showChoice('project', project.label);
+          const ref = this.model.refs.find(row => row.ref === selection.ref);
+          if (ref) { this.model.selectRef(ref); this.showChoice('ref', ref.label); }
+        }
+      }
       this.syncContext();
-      (this.model.git ? this.model.rootReady ? this.inputs.project : this.inputs.root : this.inputs.machine).focus();
+      let input = this.inputs.machine;
+      if (this.model.git && this.model.project) input = this.model.ref ? this.inputs.name : this.inputs.ref;
+      else if (this.model.git) input = this.model.rootReady ? this.inputs.project : this.inputs.root;
+      input.focus();
     });
   }
 

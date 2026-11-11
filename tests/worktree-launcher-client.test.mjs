@@ -8,6 +8,7 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
     const value = JSON.parse(args[2]); calls.push({ command, args, options, value });
     const result = value.operation === 'context' ? { protocol: 1, userHome: '/fixture-home', core_id: 'app-core' }
       : value.operation === 'discover' ? [project]
+      : value.operation === 'selection' ? { project, ref: 'refs/heads/feature/current' }
       : value.operation === 'prepare' ? { ...value, path: '/worktree' }
       : value.operation === 'create' ? { kind: 'created', request: value.request, path: value.request.path }
       : { terminal: 't42' };
@@ -15,6 +16,9 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
   };
   const api = await connectCLI(exec, 'devbox');
   const [selected] = await api.discover({ project_root: '/code' });
+  const suggestion = await api.selection('/code/sample/src');
+  assert.equal(suggestion.project.machine, 'devbox'); assert.equal(suggestion.ref, 'refs/heads/feature/current');
+  assert.equal(calls.find(c => c.value.operation === 'selection').value.path, '/code/sample/src');
   const prepared = await api.prepare({ project: selected, name: "feature/quote's", action: 'new' });
   const result = await api.create({ ...prepared, core_id: 'stale-core' }); await api.open({ ...result.request, core_id: 'stale-core' });
   assert.equal(api.userHome, '/fixture-home'); assert.equal(result.request.machine, 'devbox'); assert.equal(result.request.project.machine, 'devbox');

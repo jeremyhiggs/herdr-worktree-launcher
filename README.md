@@ -9,13 +9,14 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 | Feature | What you can do |
 | --- | --- |
 | New branches | Select a local or fetched remote base and create a separate worktree. |
+| Current-space defaults | Start with the active space's project and checked-out branch, then change either selection as needed. |
 | Existing branches | Create a checkout for an available branch, or use its existing worktree folder. |
 | Fetch remote branches | Fetch `origin` or another Git remote, then select new or updated branches without leaving the launcher. |
 | Fresh sessions | Detect the worktree's existing Herdr space and open a new tab, or create a space. |
 | Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
 | Native Herdr workflow | Keep worktrees grouped beneath their project, use keyboard controls, and follow Herdr's light or dark theme. |
-| Terminal CLI | Run locally from any directory, including a mobile terminal, with an explicit canonical checkout. |
+| Terminal CLI | Infer the current checkout and branch, or specify them explicitly. Works from a mobile terminal. |
 
 If a created worktree's session fails to open, you can retry opening it without repeating Git creation.
 
@@ -108,7 +109,7 @@ To rebuild and update the installed command, run `./scripts/install-cli.sh --upd
 
 ### Choose the canonical checkout
 
-`--checkout` points to **one repository's canonical checkout**, not a directory containing projects. By default, the CLI infers the repository from your current directory. Use `--checkout PATH` to select a different checkout or run from elsewhere.
+`--checkout` points to **one Git checkout**, not a directory containing projects. By default, the CLI infers the repository from your current directory. Use `--checkout PATH` to select a different checkout or run from elsewhere.
 
 From any directory, run:
 
@@ -120,13 +121,15 @@ herdr-worktree-launcher open feature/rate-limits \
   --checkout /work/projects/sample-api --program codex
 ```
 
-There is no environment-variable checkout default. You can also pass `--checkout .` explicitly. Linked checkouts resolve to their canonical checkout.
+There is no environment-variable checkout default. You can also pass `--checkout .` explicitly. Linked checkouts share their canonical repository identity.
 
 ### Create or open a session
 
 Run `herdr-worktree-launcher` without a command for text prompts. It asks for the checkout path, action, branch, base, and installed program. The checkout prompt offers your current directory.
 
-`new` creates a branch from `--base`, or the canonical checkout's current branch. `open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Add `--fetch REMOTE` to refresh one configured remote before resolving branches and invoking Worktrunk:
+`new` creates a branch from `--base`, or the selected checkout's current branch. This includes linked worktrees and their subdirectories. An explicit `--checkout` also selects the checkout whose branch supplies the default base. A detached checkout requires `--base`.
+
+`open` uses an existing checkout when available. Otherwise, it creates a checkout for the selected local or fetched remote branch. Add `--fetch REMOTE` to refresh one configured remote before resolving branches and invoking Worktrunk:
 
 ```sh
 herdr-worktree-launcher new feature/mobile --checkout /work/projects/sample-api --base origin/main --fetch origin
@@ -166,6 +169,14 @@ You can also enter an absolute project-root path directly. The launcher saves a 
 ![New branch form showing the project, base branch, name, destination, and Shell selection](docs/screenshots/new-branch.png)
 
 *Create a separate checkout from the selected base. The destination preview shows where it will live.*
+
+### Start from the current space
+
+When you open the launcher, it selects the active space's machine. If its repository appears under the saved project root, the launcher preselects that project and the checkout's current branch.
+
+For example, opening from a worktree on `feature/payments` selects that branch as the base for a new worktree. Enter a new branch name to continue. You can change either selection.
+
+If the checkout is detached, only the project is preselected. If no matching project is available, select a project and base manually. These suggestions apply only when the launcher opens; they do not replace later choices or persist between runs.
 
 ### Use an existing branch
 

@@ -1293,6 +1293,17 @@ func api(in input) (any, error) {
 		return discover(in.Config.ProjectRoot)
 	case "project":
 		return project(in.Path, "")
+	case "selection":
+		p, err := project(in.Path, "")
+		if err != nil {
+			return nil, err
+		}
+		ref, err := git(in.Path, "symbolic-ref", "--quiet", "HEAD")
+		var exit *exec.ExitError
+		if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+			return nil, err
+		}
+		return map[string]any{"project": p, "ref": ref}, nil
 	case "identity":
 		return identity(in.Path)
 	case "identities":
@@ -1511,9 +1522,9 @@ func run(args []string) (any, bool, error) {
 	}
 	base := values["base"]
 	if action == "new" && base == "" {
-		base, err = git(p.Path, "symbolic-ref", "--quiet", "HEAD")
+		base, err = git(checkout, "symbolic-ref", "--quiet", "HEAD")
 		if err != nil {
-			return nil, jsonOutput, errors.New("Canonical checkout is detached. Supply --base.")
+			return nil, jsonOutput, errors.New("Selected checkout is detached. Supply --base.")
 		}
 		if interactive {
 			base, err = ask("Base branch", strings.TrimPrefix(base, "refs/heads/"))

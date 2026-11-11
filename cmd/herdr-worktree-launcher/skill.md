@@ -14,7 +14,9 @@ herdr-worktree-launcher api --request '{"operation":"project","path":"/code/proj
 
 `--checkout PATH` overrides the Git checkout inferred from the current directory.
 Interactive mode offers the current directory and lets the user change it.
-No environment-variable repository default is used. Linked checkouts resolve to the primary checkout. Naming uses
+No environment-variable repository default is used. Linked checkouts resolve to the primary checkout for repository identity.
+Without `--base`, new branches use the selected checkout's current branch, including a linked checkout or subdirectory.
+An explicit `--base` overrides that branch. A detached checkout requires `--base`. Naming uses
 origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.
@@ -26,13 +28,16 @@ operation before prepare/create.
 
 The API accepts `{operation,...arguments}`. Operations: context, validateRoot
 (`config.project_root`), directories (`path`), discover (`config`), project and
-identity (`path`), identities (`paths`), choices/remotes (`project`), fetch
+identity (`path`), selection (`path`), identities (`paths`), choices/remotes (`project`), fetch
 (`project,remote`), destination (`project,name`), prepare
 (`project,action,ref,name,checkout`), create/inspect/open (`request`), programs
 (`agents` optional). Pass `recover:true` to inspect interrupted operations.
 Prepare returns a request; create returns `{kind,path,request,error?}` with kind
 created, partial, or absent. Open returns `{path,terminal,space,tab,program}`.
 Errors use `{error:{kind,message,hint}}` with nonzero exit status.
+
+Selection returns `{project,ref}` for a checkout or subdirectory. The project identifies the primary checkout;
+`ref` identifies the requested checkout's branch, or an empty string for detached HEAD.
 
 The context response includes `core_id` when `hc server status` proves that a
 core is already running. Desktop API clients pass this value as `request.core_id`

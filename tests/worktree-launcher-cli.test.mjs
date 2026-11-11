@@ -182,6 +182,24 @@ test('CLI infers the current checkout, accepts overrides, and ignores the old en
   assert.equal(created.path, join(f.home, '.herdr/worktrees/sample/inferred'));
   assert.equal(await f.git('symbolic-ref', 'HEAD'), 'refs/heads/main');
   assert.equal((await execute('git', ['-C', other, 'branch', '--list', 'inferred'])).stdout.trim(), '');
+  await execute('git', ['-C', created.path, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'linked checkout tip']);
+  const tip = (await execute('git', ['-C', created.path, 'rev-parse', 'HEAD'])).stdout.trim();
+  const linkedNested = join(created.path, 'src'); await mkdir(linkedNested);
+  const selection = JSON.parse((await run(['api', '--request', JSON.stringify({ operation: 'selection', path: linkedNested })], f.elsewhere)).stdout);
+  assert.equal(selection.project.path, f.project);
+  assert.equal(selection.ref, 'refs/heads/inferred');
+  for (const [name, cwd, flags, expected] of [
+    ['from-current', linkedNested, [], tip],
+    ['from-override', f.elsewhere, ['--checkout', linkedNested], tip],
+    ['explicit-base', linkedNested, ['--base', 'main'], await f.git('rev-parse', 'main')],
+  ]) {
+    const result = JSON.parse((await run(['new', name, ...flags, '--json'], cwd)).stdout);
+    assert.equal((await execute('git', ['-C', result.path, 'rev-parse', 'HEAD'])).stdout.trim(), expected);
+  }
+  await execute('git', ['-C', created.path, 'checkout', '--detach']);
+  const detached = JSON.parse((await run(['api', '--request', JSON.stringify({ operation: 'selection', path: linkedNested })], f.elsewhere)).stdout);
+  assert.equal(detached.project.id, selection.project.id); assert.equal(detached.ref, '');
+  await assert.rejects(run(['new', 'detached-base', '--json'], linkedNested), /detached.*--base/i);
   const count = (await f.core()).terminals.length;
   await assert.rejects(run(['open', 'main', '--json'], f.elsewhere, f.project), /not a git repository/i);
   await assert.rejects(run(['open', 'main', '--checkout=', '--json'], f.project), /--checkout PATH/);

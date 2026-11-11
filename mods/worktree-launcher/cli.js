@@ -39,6 +39,10 @@ export async function connectCLI(exec, machine = null) {
     directories: path => invoke('directories', { path }),
     discover: async config => (await invoke('discover', { config })).map(project),
     project: async path => project(await invoke('project', { path })),
+    selection: async path => {
+      const value = await invoke('selection', { path });
+      return { ...value, project: project(value.project) };
+    },
     choices: project => invoke('choices', { project }),
     remotes: project => invoke('remotes', { project }),
     fetch: (project, remote) => invoke('fetch', { project, remote }),

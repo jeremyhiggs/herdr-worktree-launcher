@@ -5,7 +5,7 @@ Usage: herdr-worktree-launcher new|open BRANCH [--checkout PATH] [options]
   (no arguments)                  Prompt for checkout path, action, branch and program
 
   --checkout PATH   Override the checkout inferred from the current directory
-  --base REF        Base branch for new (default: primary checkout's branch)
+  --base REF        Base branch for new (default: selected checkout's branch)
   --fetch REMOTE    Fetch one configured remote before branch selection and wt
   --program NAME    shell, claude, pi, opencode or codex (default: shell)
   --json            Print session information as JSON
@@ -18,7 +18,9 @@ Requires git, Worktrunk's wt, and hc on PATH. Set HC_SOCKET or HC_SESSION to an
 already running local core. Missing context or an unavailable core fails before
 creation; this command never starts a core. Run on the machine with the checkout.
 
-Linked checkouts resolve to their primary checkout. Worktrees are placed under
+The current directory selects the checkout unless --checkout overrides it.
+New branches default to that checkout's branch, including linked worktrees.
+For a detached checkout, supply --base. Worktrees are placed under
 ~/.herdr/worktrees/<repository>/<branch-slug>; existing checkouts keep their path.
 Worktrunk owns creation. Backend calls use --no-hooks to skip Worktrunk project
 hooks. Run trusted setup manually afterwards. No files or branches are deleted.
