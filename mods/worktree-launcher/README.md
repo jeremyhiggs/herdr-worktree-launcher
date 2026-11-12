@@ -35,6 +35,8 @@ The launcher starts on the active space's machine. If its repository appears und
 
 The lookup uses the focused terminal's live folder. Its fallbacks are a terminal in the active tab, then the space's starting folder.
 
+During startup, **Loading projects and current checkout…** appears and the form stays disabled until the initial selections are ready. **Close** and **Esc** remain available.
+
 1. Select **Local** or a connected machine.
 2. Use **Browse…** to choose the directory that contains your projects, or enter its absolute path.
 3. Select **Save**.

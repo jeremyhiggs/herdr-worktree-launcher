@@ -9,7 +9,7 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 90 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 92 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
 | `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 46 commits. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
 | `scripts/validate.sh` | Passed locally | Lint, security checks, Go race tests, 89 Node tests, and standalone CLI build |
@@ -59,6 +59,7 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | Checkout location needs inference or an override | Infer from the current repository or subdirectory. Honor `--checkout`. Reject an unspecified checkout outside Git. | CLI: checkout-inference test. |
 | UI opens from a local or remote space | Preselect its discovered project by Git identity and use that checkout's branch as the base. Leave the branch name empty. | [UI controls](../../tests/worktree-launcher-ui.test.mjs): active-space preselection test. Client: machine routing assertions. CLI: selection API assertions. |
 | Live terminal folder differs from the space's starting folder | Prefer the focused terminal's live checkout, then a terminal in the active tab, then the stored folder. Ignore unrelated spaces and inactive tabs. Capture context before asynchronous loading. | UI controls: live-terminal-checkout test on local and remote machines. Separate native sample checks a worktree tab inside its primary project's space. |
+| Startup discovery, checkout lookup, or branch loading is slow | Keep form controls and submission disabled throughout initialization. Show a loading message. Restore controls on success or error; allow Close and Esc while waiting. | UI controls: gated startup and error/dismissal tests. The sample capture driver waits for initialization before interacting. |
 | Initial suggestions arrive after a manual choice, machine change, or close | Ignore the stale suggestion and preserve the user's choice. | UI controls: late initial checkout suggestions test. |
 | Active checkout is unavailable, excluded, or detached | Keep manual selection available. Detached HEAD preselects only the project. | UI controls: unavailable/excluded/detached test. CLI: detached selection assertion. |
 | CLI creates from a linked checkout or subdirectory without `--base` | Use that checkout's branch. Honor explicit `--checkout` and `--base` overrides. Require `--base` for detached HEAD. | CLI: checkout-inference test with distinct primary and linked tips. |
@@ -121,7 +122,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 90 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 92 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 
@@ -134,6 +135,8 @@ The fetch scene discovers a server-only branch from the selected remote. Existin
 The latest capture also reopens the launcher from that created worktree. It asserts the automatic project and base-branch selections, with an empty new-branch name, before taking `current-space.png`. All seven README screenshots were refreshed and visually inspected.
 
 A later regression check opened a worktree tab inside the primary project's space, so the live folder differed from the stored space folder. The old lookup failed the selection assertion. The corrected lookup passed in the native sample app. The capture script now includes this case; its diagnostic images remain outside the README.
+
+A sample-only startup delay also confirmed the visible loading message and disabled form controls. Close stayed enabled. The sample completed all creation, fetch, reuse, and current-checkout scenes after loading finished. The loading-state image was visually inspected and retained outside the README.
 
 A separate native check opened the launcher from a linked-checkout subdirectory. It preselected the discovered project and `feature/context` base, with an empty new-branch name. This used the freshly built CLI and programmatic form-state assertions. Connected-machine defaults remain fixture-tested.
 

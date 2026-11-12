@@ -7,7 +7,7 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 // Load the real view methods without a native window; controls below record focus.
 const modules = {
   'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
-  'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
+  'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:id=>globalThis.launcherElement(id)},Input={new:state=>globalThis.launcherElement(state)},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
   herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>globalThis.launcherSpaces,panes=()=>globalThis.launcherPanes,focused=()=>globalThis.launcherFocused,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
@@ -21,13 +21,16 @@ function keyboardView(phase = 'editing', spaces = [], { panes = [], focused = nu
   globalThis.launcherSpaces = spaces;
   globalThis.launcherPanes = panes;
   globalThis.launcherFocused = focused;
-  const handlers = new Map(), bindings = [], opacities = [], focus = [];
+  const handlers = new Map(), bindings = [], opacities = [], focus = [], disabled = new Map(), labels = [];
   const nativeWindow = { active: false, activations: 0, activate_window() { this.active = true; this.activations++; }, is_window_active() { return this.active; } };
   globalThis.window = nativeWindow;
-  globalThis.launcherElement = () => {
+  globalThis.launcherElement = id => {
     const element = new Proxy({}, { get: (_target, key) => (...args) => {
       if (key === 'on_key_down' || key === 'on_key_up') handlers.set(key, args[0]);
       if (key === 'opacity') opacities.push(args[0]);
+      if (key === 'disabled') disabled.set(id, !!args[0]);
+      if (key === 'child' && typeof args[0] === 'string') labels.push(args[0]);
+      if (key === 'when' && args[0]) return args[1](element);
       return element;
     } });
     return element;
@@ -39,11 +42,48 @@ function keyboardView(phase = 'editing', spaces = [], { panes = [], focused = nu
     const handle = { focus() { focus.push('handle'); focusedHandle = handle; }, is_focused: () => focusedHandle === handle };
     return handle;
   }, bind_keys: rows => bindings.push(...rows), stop_propagation() {}, notify() {} };
-  view.init({}, cx); view.model.phase = phase; view.render();
+  view.init({}, cx); view.model.phase = phase;
+  if (phase !== 'loading') view.initializing = false;
+  view.render();
   assert(!bindings.some(row => row.keystroke === 'escape'), 'Do not override native Escape routing');
   assert(handlers.has('on_key_down')); assert(handlers.has('on_key_up'));
-  return { view, cx, focus, nativeWindow, opacities, initialWork, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
+  return { view, cx, focus, nativeWindow, opacities, disabled, labels, initialWork, pressEscape: () => handlers.get('on_key_up')({ key: 'escape' }, cx) };
 }
+
+test('startup stays disabled through discovery, checkout lookup and branches, with a visible loading message', async () => {
+  const gate = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+  const discovery = gate(), selection = gate(), selected = gate(), branches = gate(), choosing = gate();
+  const { view, initialWork, cx, disabled, labels } = keyboardView('loading', [{ active: true, folder: '/checkout' }]);
+  const project = { id: 'repo', path: '/projects/app', label: 'app' }, ref = { ref: 'refs/heads/main', label: 'main' };
+  view.model.config = async () => ({ project_root: '/projects' }); view.model.listAgents = async () => [];
+  view.model.connect = async () => ({
+    discover: () => discovery.promise,
+    selection: () => { selected.resolve(); return selection.promise; },
+    choices: () => { choosing.resolve(); return branches.promise; }, remotes: async () => [],
+  });
+  const pending = initialWork(null, () => {});
+  let actions = 0; view.task = () => { actions++; };
+  const assertLoading = () => {
+    disabled.clear(); labels.length = 0; view.render();
+    for (const field of ['machine', 'root', 'project', 'ref', 'name', 'launch', ...(view.model.project ? ['remote'] : [])]) assert.equal(disabled.get(view.inputs[field]), true, field);
+    for (const id of ['refresh', 'save-root', 'browse-root', 'new', 'existing', 'create']) assert.equal(disabled.get(id), true, id);
+    assert.equal(disabled.get('close'), false, 'Closing stays available');
+    assert(labels.some(text => /Loading/.test(text)), 'Show why the form is disabled');
+    view.choose(project, cx, 'project'); view.choose({ name: 'other', label: 'other' }, cx, 'machine');
+    view.submitInput('root', {}, cx); view.submitInput('name', {}, cx);
+    view.key({ key: 'enter', keystroke: 'cmd-enter' }, cx);
+    assert.equal(actions, 0, 'Clicks and Enter cannot start work during initialization');
+  };
+  assertLoading();
+  discovery.resolve([project]); await selected.promise; assertLoading();
+  selection.resolve({ project, ref: ref.ref }); await choosing.promise; assertLoading();
+  branches.resolve([ref]); await pending;
+  disabled.clear(); labels.length = 0; view.model.setName('feature'); view.render();
+  assert.equal(view.model.ref, ref);
+  for (const field of ['machine', 'project', 'ref', 'name']) assert.equal(disabled.get(view.inputs[field]), false, field);
+  assert.equal(disabled.get('create'), false);
+  assert(!labels.some(text => /Loading/.test(text)));
+});
 
 test('opening focuses and activates the launcher before slow project loading, so Escape can close it', async () => {
   const { view, focus, nativeWindow, initialWork, pressEscape } = keyboardView('loading');
@@ -54,7 +94,23 @@ test('opening focuses and activates the launcher before slow project loading, so
   assert.equal(nativeWindow.activations, 1, 'Activate before awaiting projects');
   pressEscape(); assert.equal(view.model.closed, true);
   release(); await pending;
+  assert.equal(view.initializing, false);
   assert.deepEqual(globalThis.launcherClosedOverlays, ['fixture-overlay']);
+});
+
+test('startup errors restore editing and Tab then Enter can close a loading form', async () => {
+  const { view, initialWork, disabled } = keyboardView('loading');
+  view.model.config = async () => { throw new Error('Configuration unavailable'); };
+  await initialWork(null, () => {}); view.render();
+  assert.equal(view.initializing, false);
+  assert.match(view.model.error, /Configuration unavailable/);
+  assert.equal(disabled.get(view.inputs.machine), false);
+  assert.equal(disabled.get('refresh'), false);
+  const loading = keyboardView('loading');
+  loading.view.key({ key: 'tab' }, loading.cx);
+  assert.equal(loading.view.buttons.close.is_focused(), true);
+  loading.view.key({ key: 'enter' }, loading.cx);
+  assert.equal(loading.view.model.closed, true);
 });
 
 test('opening preselects the active space repository and checkout branch on its machine', async () => {

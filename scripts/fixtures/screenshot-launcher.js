@@ -14,8 +14,8 @@ export default class ScreenshotLauncher extends Launcher {
         const scene = await nextCommand();
         try {
           const deadline = Date.now() + 30000;
-          while (this.model.phase === 'loading' && Date.now() < deadline) await pause(100);
-          if (this.model.phase !== 'editing') throw new Error(this.model.error || `Not ready: ${this.model.phase}`);
+          while ((this.initializing || this.model.phase === 'loading') && Date.now() < deadline) await pause(100);
+          if (this.initializing || this.model.phase !== 'editing') throw new Error(this.model.error || `Not ready: ${this.model.phase}`);
           const m = this.model;
           const project = m.projects.find(item => item.label === 'acme/sample-api');
           if (!project) throw new Error('Sample project not discovered.');
