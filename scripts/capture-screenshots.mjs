@@ -4,7 +4,7 @@ import { parseArgs, promisify } from 'node:util';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { pinSampleCLI } from './sample-cli.mjs';
+import { clearGitEnvironment, pinSampleCLI } from './sample-cli.mjs';
 
 if (Number.parseInt(process.versions.node, 10) < 24) throw new Error('Node.js 24 or newer is required.');
 const repository = fileURLToPath(new URL('..', import.meta.url));
@@ -25,6 +25,7 @@ const env = {
   XDG_STATE_HOME: join(root, 'state'),
   XDG_RUNTIME_DIR: join(root, 'run'),
 };
+await clearGitEnvironment(env);
 for (const key of ['HC_TERMINAL_ID', 'HERDR_SPACE_ID', 'HERDR_TAB_ID', 'HERDR_PANE_ID', 'HERDR_WORKTREE_ROOT'])
   delete env[key];
 const run = async (binary, args, timeout = 30000) =>

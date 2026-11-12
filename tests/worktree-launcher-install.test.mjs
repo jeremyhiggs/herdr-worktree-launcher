@@ -105,10 +105,18 @@ test('invalid roots, keybinding conflicts, and malformed keys fail before mod fi
   for (const scenario of ['relative root', 'conflicting key', 'malformed keys']) {
     const f = await fixture(t);
     const keys =
-      scenario === 'malformed keys' ? '{invalid' : JSON.stringify({ global: { 'cmd-shift-g': 'app.palette' } });
+      scenario === 'malformed keys'
+        ? '{invalid'
+        : JSON.stringify({ global: scenario === 'conflicting key' ? { 'cmd-shift-g': 'app.palette' } : {} });
     await writeFile(f.keys, keys);
     const args = ['--project-root', scenario === 'relative root' ? '.' : f.projects];
-    await assert.rejects(f.run(args), /project-root|already assigned|Invalid JSON/);
+    const expected =
+      scenario === 'relative root'
+        ? /project-root/
+        : scenario === 'conflicting key'
+          ? /already assigned/
+          : /Invalid JSON/;
+    await assert.rejects(f.run(args), expected);
     await assert.rejects(readdir(f.target), { code: 'ENOENT' });
     assert.equal(await readFile(f.keys, 'utf8'), keys);
   }

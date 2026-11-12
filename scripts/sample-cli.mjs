@@ -1,5 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+export async function clearGitEnvironment(env) {
+  const { stdout } = await promisify(execFile)('git', ['rev-parse', '--local-env-vars'], { env });
+  for (const key of stdout.trim().split('\n')) delete env[key];
+}
 
 export async function pinSampleCLI(mod, binary) {
   const path = join(mod, 'cli.js');

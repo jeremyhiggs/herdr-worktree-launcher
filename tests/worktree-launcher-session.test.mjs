@@ -25,6 +25,7 @@ const { basename, join } = require('node:path');
 const args = process.argv.slice(2), binary = basename(process.argv[1]);
 appendFileSync(process.env.PW_TEST_EVENTS, JSON.stringify({binary,args,env:Object.fromEntries(['HOME','HERDR_APP_HOME','HC_SESSION','HC_SOCKET','ZDOTDIR','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','XDG_RUNTIME_DIR','HC_TERMINAL_ID'].map(k=>[k,process.env[k]??null]))})+'\\n');
 if (process.env.PW_TEST_FAIL_OPEN && args[0]==='do' && args[1]==='mod.open') process.exit(1);
+if (process.env.PW_TEST_FAIL_CHECK && args[0]==='check') { console.error('injected native check failure'); process.exit(1); }
 const state=join(process.env.HERDR_APP_HOME,'overlay-polls');
 if (process.env.PW_TEST_DELAY_OVERLAY && args[0]==='do' && args[1]==='mod.open') writeFileSync(state,'0');
 if (args[0]==='status') {
@@ -107,6 +108,65 @@ test('isolated launcher configures disposable discovery, fixtures, shortcut and 
       ['XDG_RUNTIME_DIR', 'run'],
     ])
       assert.equal(record.env[key], join(root, dir));
+  }
+});
+
+test('sample scripts cannot redirect Git writes to a caller repository through inherited variables', async (t) => {
+  for (const capture of [false, true]) {
+    const f = await fixture(t);
+    const protectedRepo = join(f.root, 'caller-repository');
+    await mkdir(protectedRepo);
+    const git = async (...args) =>
+      (
+        await execute('git', [
+          '-C',
+          protectedRepo,
+          '-c',
+          'core.hooksPath=/dev/null',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ])
+      ).stdout.trim();
+    await git('init', '-b', 'main');
+    await writeFile(join(protectedRepo, 'README.md'), 'Preserve the caller repository.\n');
+    await git('add', 'README.md');
+    await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'fixture');
+    const before = await git('rev-parse', 'HEAD');
+    const env = {
+      ...f.env,
+      GIT_DIR: join(protectedRepo, '.git'),
+      GIT_WORK_TREE: protectedRepo,
+      GIT_INDEX_FILE: join(protectedRepo, '.git/index'),
+    };
+    let output;
+    if (capture) {
+      await assert.rejects(
+        execute(
+          process.execPath,
+          [resolve('scripts/capture-screenshots.mjs'), '--output', join(f.root, 'screenshots')],
+          {
+            env: { ...env, PW_TEST_FAIL_CHECK: '1' },
+            timeout: 20000,
+          },
+        ),
+        (error) => {
+          output = error.stdout;
+          return /Native check failed/.test(error.stderr);
+        },
+      );
+      const sample = output.match(/^Sample files preserved: (.+)$/m)?.[1];
+      assert(sample);
+      t.after(() => rm(sample, { recursive: true, force: true }));
+    } else {
+      const result = await execute(process.execPath, [launcher], { env, timeout: 20000 });
+      const sample = f.remember(result.stdout);
+      assert(sample);
+      await f.run(['stop', sample]);
+    }
+    assert.equal(await git('rev-parse', 'HEAD'), before);
+    assert.equal(await git('status', '--porcelain'), '');
+    assert.equal(await readFile(join(protectedRepo, 'README.md'), 'utf8'), 'Preserve the caller repository.\n');
   }
 });
 

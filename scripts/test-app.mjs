@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { pinSampleCLI } from './sample-cli.mjs';
+import { clearGitEnvironment, pinSampleCLI } from './sample-cli.mjs';
 
 if (Number.parseInt(process.versions.node, 10) < 24) {
   console.error('Node.js 24 or newer is required for the isolated test launcher.');
@@ -13,11 +13,13 @@ if (Number.parseInt(process.versions.node, 10) < 24) {
 }
 
 const execute = promisify(execFile);
+const inheritedEnvironment = { ...process.env };
+await clearGitEnvironment(inheritedEnvironment);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const marker = '.worktree-launcher-test.json';
 const environment = (root) => {
   const env = {
-    ...process.env,
+    ...inheritedEnvironment,
     PATH: `${join(repository, 'dist')}:${process.env.PATH}`,
     HOME: join(root, 'home'),
     HERDR_APP_HOME: join(root, 'app'),

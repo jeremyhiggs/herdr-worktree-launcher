@@ -407,7 +407,7 @@ func project(path, root string) (Project, error) {
 			return Project{}, err
 		}
 		if len(rows) == 0 || rows[0].Bare {
-			return Project{}, errors.New("No primary checkout.")
+			return Project{}, fail("unsupported_project", "No primary checkout.", "Choose a repository with a primary checkout.")
 		}
 		primary, err = real(rows[0].Path)
 		if err != nil {
@@ -435,7 +435,7 @@ func project(path, root string) (Project, error) {
 		}
 		name = strings.TrimSuffix(name, ".git")
 		if !clean(name) || name == "." || name == ".." {
-			return Project{}, errors.New("Origin has no safe repository name.")
+			return Project{}, fail("unsupported_project", "Origin has no safe repository name.", "Configure an origin with a usable repository name.")
 		}
 	} else {
 		var exit *exec.ExitError
@@ -543,6 +543,13 @@ func discover(root string) ([]Project, error) {
 	candidates := []string{}
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, e error) error {
 		if e != nil {
+			if errors.Is(e, os.ErrPermission) && d != nil && d.IsDir() {
+				for _, candidate := range candidates {
+					if path != candidate && inside(path, candidate) {
+						return filepath.SkipDir
+					}
+				}
+			}
 			return e
 		}
 		if !d.IsDir() {
@@ -585,7 +592,8 @@ func discover(root string) ([]Project, error) {
 				}
 				p, err := project(path, root)
 				if err != nil {
-					if !brokenMetadata(err) {
+					var reason *failure
+					if !brokenMetadata(err) && !(errors.As(err, &reason) && reason.Kind == "unsupported_project") {
 						results <- metadata{err: err}
 					}
 					continue

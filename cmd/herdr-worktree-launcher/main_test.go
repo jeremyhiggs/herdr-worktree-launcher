@@ -796,6 +796,54 @@ func TestFetchSelectedRemotePreservesDirtyPrimaryAndRejectsStaleProject(t *testi
 	}
 }
 
+func TestDiscoverySkipsUnreadableContentsInsideARepository(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions")
+	}
+	f := setup(t)
+	blocked := filepath.Join(f.repo, "database-data")
+	if err := os.Mkdir(blocked, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0700) })
+	rows, err := discover(filepath.Join(f.root, "projects"))
+	if err != nil || len(rows) != 1 || rows[0].Path != f.repo {
+		t.Fatalf("repository contents blocked discovery: %+v %v", rows, err)
+	}
+}
+
+func TestDiscoverySkipsUnsupportedLayoutsWithoutHidingHealthyProjects(t *testing.T) {
+	f := setup(t)
+	root := filepath.Join(f.root, "projects")
+	bare := filepath.Join(root, "bare-layout", ".bare")
+	linked := filepath.Join(root, "bare-layout", "main")
+	if err := os.MkdirAll(filepath.Dir(bare), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := command(root, "git", "clone", "--bare", f.repo, bare); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := command(root, "git", "--git-dir", bare, "worktree", "add", linked, "main"); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := filepath.Join(root, "unsafe-origin")
+	if _, err := command(root, "git", "clone", f.repo, unsafe); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(unsafe, "remote", "set-url", "origin", ".git"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := discover(root)
+	if err != nil || len(rows) != 1 || rows[0].Path != f.repo {
+		t.Fatalf("unsupported layout blocked discovery: %+v %v", rows, err)
+	}
+	for _, path := range []string{linked, unsafe} {
+		if _, err := project(path, ""); err == nil {
+			t.Fatalf("explicit unsupported checkout should still report an error: %s", path)
+		}
+	}
+}
+
 func TestUnreadableDiscoveryFailsWithoutPartialList(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory permissions")
