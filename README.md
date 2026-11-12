@@ -338,7 +338,11 @@ For contributors, see [development](docs/development.md) and the [validation rep
 
 The [scenario matrix](docs/validation/worktree-launcher.md#automated-worktree-scenarios) lists worktree and recovery tests, CI coverage, and separate native checks.
 
-Build, lint, test, and package locally with `scripts/build-cli.sh`, `scripts/lint.sh`, `scripts/test.sh`, and `scripts/package.sh`. GitHub workflows run these scripts on pushes and pull requests. The Packages workflow uploads CLI and mod archives with checksums; see [package installation](docs/packages.md).
+Run `./scripts/validate.sh` for lint, security checks, tests, and the CLI build. Run `./scripts/security.sh` for Gitleaks and Go vulnerability checks only. The scanners are pinned development tools installed by `mise install`; the Go executable does not need them.
+
+GitHub workflows run these checks on pushes and pull requests, with weekly CI checks as well. All actions use full commit SHA pins. pnpm policy restricts dependency sources and build scripts, and delays new package releases for seven days. See [development](docs/development.md) for the policy and scanner coverage.
+
+Build packages with `./scripts/package.sh`. The Packages workflow uploads CLI and mod archives with checksums; see [package installation](docs/packages.md).
 
 Screenshots use disposable sample projects in a separate Herdr installation. Only agents detected in that installation appear.
 

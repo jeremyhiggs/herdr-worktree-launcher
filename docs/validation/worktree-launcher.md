@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-11.
+Last updated: 2026-11-12.
 
 The launcher now uses a standalone Go CLI for repository and session operations. Earlier JavaScript backend measurements do not establish this implementation's performance.
 
@@ -11,6 +11,9 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
 | Node tests | 89 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
+| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 46 commits. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
+| `scripts/validate.sh` | Passed locally | Lint, security checks, Go race tests, 89 Node tests, and standalone CLI build |
+| Clean pnpm installs | Passed locally | Fresh unfrozen and frozen installs with pnpm 11.28.6; lockfile unchanged |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
 | Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
@@ -21,7 +24,11 @@ Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr ap
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
-The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The current-space defaults and dry-run changes still need a hosted run.
+Govulncheck reported standard-library advisory [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), fixed in Go 1.27.4. The current Go 1.27.3 source does not import the affected package or call the vulnerable code. This is not a claim that the pinned toolchain has no known advisories.
+
+Disposable negative checks confirmed that Gitleaks rejects a synthetic secret and redacts its value. A local package with a postinstall script failed installation under the pnpm policy; its script did not run. These probes used temporary files and did not add repository dependencies.
+
+The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The later launcher features and security job still need a hosted run.
 
 ## Automated worktree scenarios
 
@@ -90,13 +97,14 @@ The model also tests duplicate-submit prevention, cancellation, changed checkout
 | --- | --- | --- |
 | [CI](../../.github/workflows/ci.yml): build and test | Yes, on Linux and macOS | Build the CLI, run Go tests with the race detector, then run every `tests/worktree-launcher-*.test.mjs` file. This includes both recovery test files. |
 | CI: lint | Yes, on Linux | Go formatting/vet, JavaScript syntax, ShellCheck, and actionlint. |
+| CI: security | Yes, on Linux | Run `scripts/security.sh`: Gitleaks scans the full checked-out commit history with redacted output; govulncheck checks the current Go source for the runner's platform. Scanner failures fail the job. |
 | [Packages](../../.github/workflows/packages.yml) | Yes, on Linux | Cross-compile four CLI targets, package the desktop mod, and upload archives and checksums. This does not run the native UI. |
 | Native module loading | No | Separate macOS command: `herdr-app check mods/worktree-launcher`. |
 | Real desktop keyboard, focus, theme, and mouse interaction | No | Manual checks and the isolated sample installation. Mocked control tests also run in CI, but do not establish native event routing. |
 | Connected-machine creation and session opening | No | Manual test with the Go CLI and Worktrunk installed on the target machine. CI checks routing through fixtures. |
 | Actual Claude Code, Pi, OpenCode, or Codex startup | No | CI checks detection and launch arguments with fixtures. Installed agents require separate acceptance checks. |
 
-Both workflows trigger on pushes, pull requests, and manual dispatches. CI uses `mise.toml` for pinned tools. The test script checks prerequisites before running either suite.
+Both workflows trigger on pushes, pull requests, and manual dispatches. CI also runs weekly. CI uses `mise.toml` for pinned tools. Every action uses a full commit SHA, verified against its official repository. Checkout credentials are not persisted. The test script checks prerequisites before running either suite.
 
 CLI test fixtures preserve the selected `git` and `wt` executables in their restricted `PATH`. A regression assertion compares the fixture's Git version with the host selection. This prevents a fallback to an older system Git on macOS.
 

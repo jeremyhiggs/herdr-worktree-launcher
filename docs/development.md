@@ -21,12 +21,38 @@ The GitHub workflows use the same scripts as local development:
 | --- | --- |
 | `./scripts/build-cli.sh` | Standalone executable in `dist/` |
 | `./scripts/lint.sh` | Go formatting and vet, JavaScript syntax, ShellCheck, and actionlint |
+| `./scripts/security.sh` | Gitleaks scans the checked-out commit's history; govulncheck checks the current Go source against the vulnerability database |
 | `./scripts/test.sh` | Go tests with the race detector, then all Node tests |
+| `./scripts/validate.sh` | Lint, security checks, tests, and the standalone CLI build |
 | `./scripts/package.sh` | Four CLI archives, a desktop mod archive, and SHA256SUMS in `dist/packages/` |
 
 Packaging supports `--output DIRECTORY`. It includes only distribution files; personal configuration, recovery records, generated API files, and screenshot fixtures are excluded.
 
 CI runs lint on Linux and build/tests on Linux and macOS for pushes, pull requests, and manual runs. The Packages workflow cross-compiles macOS and Linux binaries for amd64 and arm64, then uploads the archives and checksums as a workflow artifact. It does not publish a GitHub release.
+
+The security job runs the same `scripts/security.sh` on Linux. Its checkout includes full history and does not retain credentials. CI also runs weekly. All workflow actions use full commit SHA pins. Gitleaks and govulncheck have exact versions in `mise.toml`.
+
+Missing tools and scanner errors fail validation. Gitleaks findings fail the scan, with matched secrets redacted. It scans committed history, including the code checked out by CI. It does not scan uncommitted files.
+
+Govulncheck fails for vulnerabilities reachable from this code; module-only advisories can be informational. It needs access to the Go vulnerability database. Neither scanner is a CLI runtime dependency.
+
+For complete local validation, run:
+
+```sh
+./scripts/validate.sh
+```
+
+The equivalent pnpm shortcuts are `pnpm run security` and `pnpm run validate`.
+
+## pnpm policy
+
+The repository keeps pnpm 11.28.6 pinned. `pnpm-workspace.yaml` enforces engines and prefers frozen lockfiles. New package releases wait seven days before installation. Exotic transitive sources are blocked. Dependency build scripts are denied by default. Unapproved builds fail installation.
+
+If a dependency needs a build script, review its installed version. Add only an exact-version entry to `allowBuilds`. Release-age exceptions also require exact reviewed versions. Do not use broad exceptions or disable the policy to make installation pass.
+
+After policy or manifest changes, clear generated install state. Run an unfrozen install, then a clean frozen install. Preserve unrelated local files. CI always uses `pnpm install --frozen-lockfile`.
+
+There are no npm dependencies. `package.json` supplies ES-module settings and development commands for the JavaScript mod, tests, and installer. It is not required to run the Go executable.
 
 For the tested worktree cases and CI limits, see the [scenario matrix](validation/worktree-launcher.md#automated-worktree-scenarios).
 
