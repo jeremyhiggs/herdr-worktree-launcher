@@ -36,4 +36,18 @@ pnpm --dir "$scratch/$name" run install:cli --prefix "$scratch/install"
 PATH="$scratch/empty" "$scratch/install/bin/herdr-worktree-launcher" --help >/dev/null
 tar -xzf "$packages/worktree-launcher-mod.tar.gz" -C "$scratch"
 pnpm --dir "$scratch/worktree-launcher-mod" run install:mod --help
-echo 'Package checksums, standalone CLI installation, and both package install scripts passed.'
+expected_version=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).version' "$root/package.json")
+reported_version=$(PATH="$scratch/empty" "$scratch/install/bin/herdr-worktree-launcher" --version)
+[ "$reported_version" = "herdr-worktree-launcher $expected_version" ] || {
+  echo 'Packaged CLI version does not match package.json.' >&2
+  exit 1
+}
+node -e '
+const fs = require("node:fs");
+const expected = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).version;
+if (typeof expected !== "string" || !expected) throw new Error("package.json has no version");
+for (const path of process.argv.slice(2)) {
+  if (JSON.parse(fs.readFileSync(path, "utf8")).version !== expected) throw new Error("Package version mismatch: " + path);
+}
+' "$root/package.json" "$scratch/$name/package.json" "$scratch/worktree-launcher-mod/package.json"
+echo 'Package checksums, standalone CLI installation, both package install scripts, and synchronized versions passed.'

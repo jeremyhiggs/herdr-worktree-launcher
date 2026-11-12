@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	launcher "herdr-worktree-launcher"
 )
 
 //go:embed help.txt
@@ -1482,7 +1484,7 @@ func run(args []string) (any, bool, error) {
 		return nil, false, nil
 	}
 	if flags["version"] {
-		fmt.Println("herdr-worktree-launcher 1.0.0")
+		fmt.Printf("herdr-worktree-launcher %s\n", launcher.Version())
 		return nil, false, nil
 	}
 	isAPI := len(positionals) > 0 && positionals[0] == "api"

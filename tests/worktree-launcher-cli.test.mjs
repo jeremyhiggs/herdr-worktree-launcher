@@ -232,9 +232,11 @@ test('packaged CLI installation finds the bundled binary without Go or --binary'
     env: { ...f.env, PATH: '/usr/bin:/bin' },
   });
   const version = await execute(join(prefix, 'bin/herdr-worktree-launcher'), ['--version'], {
+    cwd: f.elsewhere,
     env: { ...f.env, PATH: f.elsewhere },
   });
-  assert.match(version.stdout, /^herdr-worktree-launcher /);
+  const manifest = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
+  assert.equal(version.stdout.trim(), `herdr-worktree-launcher ${manifest.version}`);
 });
 
 test('CLI dry-run previews creation, fetch and existing-worktree reuse without invoking wt or hc', async (t) => {

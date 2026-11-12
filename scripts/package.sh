@@ -31,7 +31,7 @@ package_manifest() {
 const fs = require("node:fs");
 const source = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const script = process.argv[3];
-const manifest = { name: source.name, private: true, type: "module", packageManager: source.packageManager, engines: source.engines, scripts: { [script]: source.scripts[script] } };
+const manifest = { name: source.name, version: source.version, private: true, type: "module", packageManager: source.packageManager, engines: source.engines, scripts: { [script]: source.scripts[script] } };
 fs.writeFileSync(process.argv[2], JSON.stringify(manifest, null, 2) + "\n");
 ' "$root/package.json" "$1/package.json" "$2"
 }

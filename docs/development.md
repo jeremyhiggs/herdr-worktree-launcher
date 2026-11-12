@@ -64,6 +64,8 @@ For the tested worktree cases and CI limits, see the [scenario matrix](validatio
 
 For package contents and installation, see [Install a package](packages.md).
 
+`package.json` is the version source. Go embeds it at build time, so `herdr-worktree-launcher --version` needs no source files or Node runtime. Generated CLI and mod package manifests copy the same version. To change the version, edit `package.json` and rebuild.
+
 Tests use disposable Git repositories, real Worktrunk, and core/app protocol fixtures. They need no live Herdr instance. Native mod loading remains a separate macOS check:
 
 ```sh
