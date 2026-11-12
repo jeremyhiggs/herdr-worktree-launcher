@@ -95,7 +95,7 @@ test('repeated installation updates code, preserves config and keys byte-for-byt
   assert.equal(await readFile(f.keys, 'utf8'), keys);
   const next = join(f.root, 'next');
   await mkdir(next);
-  await f.run(['--update', '--project-root', next]);
+  await f.run(['--project-root', next]);
   assert.deepEqual(JSON.parse(await readFile(configPath)), { project_root: next, personal: 'keep' });
 });
 
@@ -154,7 +154,7 @@ test('installation without a project root supports UI setup, and update preserve
   assert.deepEqual(JSON.parse(await readFile(configPath)), {});
   const config = JSON.stringify({ remote_project_roots: { devbox: '/remote/projects' } });
   await writeFile(configPath, config);
-  await f.run(['--update']);
+  await f.run();
   assert.equal(await readFile(configPath, 'utf8'), config);
 });
 
@@ -166,7 +166,7 @@ test('no-shortcut preserves an existing binding and native check failures do not
   assert.equal(await readFile(f.keys, 'utf8'), original);
   await writeFile(f.keys, '{}');
   await assert.rejects(
-    f.run(['--update'], { WL_FAIL_CHECK: '1' }),
+    f.run([], { WL_FAIL_CHECK: '1' }),
     /Native check failed.*[\s\S]*shortcut was not changed.*[\s\S]*injected native failure/,
   );
   assert.equal(await readFile(f.keys, 'utf8'), '{}');
@@ -183,7 +183,7 @@ test('default installation home follows HOME, and symlinked destinations are ref
   );
   await mkdir(join(f.app, 'mods'));
   await symlink(join(env.HOME, '.config/herdr-app/mods/worktree-launcher'), f.target);
-  await assert.rejects(f.run(['--update', '--project-root', f.projects]), /Refusing to replace/);
+  await assert.rejects(f.run(['--project-root', f.projects]), /Refusing to replace/);
 });
 
 test('update migrates legacy settings once and preserves every machine root and unrelated field', async (t) => {
@@ -194,13 +194,13 @@ test('update migrates legacy settings once and preserves every machine root and 
   const config = { project_root: f.projects, remote_project_roots: { devbox: '/remote/projects' }, personal: true };
   const original = JSON.stringify(config);
   await writeFile(legacyPath, original);
-  await f.run(['--update']);
+  await f.run();
   const nextPath = join(f.app, 'data/worktree-launcher-config.json');
   assert.deepEqual(JSON.parse(await readFile(nextPath)), config);
   assert.equal(await readFile(legacyPath, 'utf8'), original);
   config.remote_project_roots.devbox = '/remote/next';
   await writeFile(nextPath, JSON.stringify(config));
-  await f.run(['--update']);
+  await f.run();
   assert.deepEqual(JSON.parse(await readFile(nextPath)), config);
 });
 
@@ -214,9 +214,6 @@ test('migration preserves settings saved by the running UI after the installer f
     remote_project_roots: { devbox: '/new/remote' },
     savedByUi: true,
   });
-  await assert.rejects(
-    f.run(['--update'], { WL_CONFIG_DURING_VERSION: current }),
-    /settings changed during installation/,
-  );
+  await assert.rejects(f.run([], { WL_CONFIG_DURING_VERSION: current }), /settings changed during installation/);
   assert.equal(await readFile(join(f.app, 'data/worktree-launcher-config.json'), 'utf8'), current);
 });

@@ -15,7 +15,7 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 93 Node tests, and standalone CLI build |
 | Clean pnpm installs | Passed locally | Fresh unfrozen and frozen installs with pnpm 11.28.6; lockfile unchanged |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
-| `scripts/test-package.sh` | Passed | All archive checksums, extracted CLI installation without `--binary`, help with an empty runtime PATH, and packaged `pnpm run install:mod --help` |
+| `scripts/test-package.sh` | Passed | All archive checksums, extracted CLI installation without `--binary`, packaged `pnpm run install:cli`, help with an empty runtime PATH, and packaged `pnpm run install:mod --help` |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
 | Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |

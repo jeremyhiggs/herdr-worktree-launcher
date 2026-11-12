@@ -22,7 +22,6 @@ while [ "$#" -gt 0 ]; do
     binary=$2
     shift 2
     ;;
-  --update) shift ;;
   --help)
     echo 'Usage: scripts/install-cli.sh [--prefix DIRECTORY] [--binary FILE]'
     exit 0

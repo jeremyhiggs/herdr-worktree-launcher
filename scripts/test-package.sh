@@ -32,7 +32,8 @@ esac
 name="herdr-worktree-launcher-$platform-$architecture"
 tar -xzf "$packages/$name.tar.gz" -C "$scratch"
 "$scratch/$name/scripts/install-cli.sh" --prefix "$scratch/install"
+pnpm --dir "$scratch/$name" run install:cli --prefix "$scratch/install"
 PATH="$scratch/empty" "$scratch/install/bin/herdr-worktree-launcher" --help >/dev/null
 tar -xzf "$packages/worktree-launcher-mod.tar.gz" -C "$scratch"
 pnpm --dir "$scratch/worktree-launcher-mod" run install:mod --help
-echo 'Package checksums, standalone CLI installation, and mod install script passed.'
+echo 'Package checksums, standalone CLI installation, and both package install scripts passed.'

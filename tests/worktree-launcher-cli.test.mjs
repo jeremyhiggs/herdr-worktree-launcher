@@ -216,7 +216,7 @@ test('CLI installation refuses unrelated commands and installation folders', asy
   await rm(command);
   await mkdir(command);
   await assert.rejects(
-    execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli, '--update'], { env: f.env }),
+    execute('/bin/sh', [installer, '--prefix', prefix, '--binary', cli], { env: f.env }),
     /Refusing to replace a directory/,
   );
 });

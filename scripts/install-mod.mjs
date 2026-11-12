@@ -44,7 +44,6 @@ async function install() {
   const { values } = parseArgs({
     options: {
       'project-root': { type: 'string' },
-      update: { type: 'boolean' },
       'no-shortcut': { type: 'boolean' },
       help: { type: 'boolean' },
     },

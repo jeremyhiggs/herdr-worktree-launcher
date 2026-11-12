@@ -14,6 +14,8 @@ Extract the archive and enter its directory. Then run:
 
 The installer detects the bundled executable. It needs no Go installation. It installs the command in `~/.local/bin`; add that directory to PATH. Run the same command again to update it. An unrelated existing command is preserved.
 
+If you use pnpm, the archive also provides `pnpm run install:cli`. No dependency installation is required. The shell installer works without Node or pnpm.
+
 The executable needs Git, Worktrunk (`wt`), and Herdr Core (`hc`) on PATH. It needs no Go or Node runtime.
 
 Run from an environment with `HC_SOCKET` or `HC_SESSION` identifying an already running core. Missing context or Worktrunk stops creation. The CLI never starts a default core.
