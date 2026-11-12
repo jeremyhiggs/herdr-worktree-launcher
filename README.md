@@ -118,7 +118,7 @@ herdr-worktree-launcher new feature/rate-limits \
   --checkout /work/projects/sample-api --base main
 
 herdr-worktree-launcher open feature/rate-limits \
-  --checkout /work/projects/sample-api --program codex
+  --checkout /work/projects/sample-api --execute codex
 ```
 
 There is no environment-variable checkout default. You can also pass `--checkout .` explicitly. Linked checkouts share their canonical repository identity.
@@ -140,7 +140,7 @@ Omit `--checkout` when running inside the repository. Supply it when running fro
 
 Each successful command starts a **fresh terminal**. If a matching Herdr space exists, the CLI adds a new tab there. Otherwise, it creates a space. The desktop app adopts the space and tabs when it connects.
 
-`--program` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
+`--execute` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
 
 Use `--attach` to enter the new terminal immediately. Otherwise, the output includes an `hc attach` command. `--json` returns the checkout path and terminal, space, and tab IDs for scripts.
 
@@ -157,7 +157,7 @@ Add `--dry-run` to see the inferred checkout, source branch and commit, destinat
 ```sh
 herdr-worktree-launcher new feature/follow-up --dry-run
 herdr-worktree-launcher open feature/payments --dry-run
-herdr-worktree-launcher new feature/follow-up --program codex --dry-run --json
+herdr-worktree-launcher new feature/follow-up --execute codex --dry-run --json
 ```
 
 The preview shows whether it would create a worktree or reuse an existing folder. It describes the fresh terminal and tab, including primary-space setup when needed. Add `--json` for a machine-readable plan.

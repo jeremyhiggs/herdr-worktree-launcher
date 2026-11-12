@@ -1,13 +1,13 @@
 Usage: herdr-worktree-launcher new|open BRANCH [--checkout PATH] [options]
 
   new feature/name --checkout /code/project --base main
-  open origin/feature/name --checkout /code/project --fetch origin --program codex
+  open origin/feature/name --checkout /code/project --fetch origin --execute codex
   (no arguments)                  Prompt for checkout path, action, branch and program
 
   --checkout PATH   Override the checkout inferred from the current directory
   --base REF        Base branch for new (default: selected checkout's branch)
   --fetch REMOTE    Fetch one configured remote before branch selection and wt
-  --program NAME    shell, claude, pi, opencode or codex (default: shell)
+  --execute NAME    shell, claude, pi, opencode or codex (default: shell)
   --dry-run         Validate and print the plan without changing Git or sessions
   --json            Print session information as JSON
   --attach          Attach foreground stdin to the new session (without --json)

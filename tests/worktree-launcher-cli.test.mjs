@@ -84,7 +84,7 @@ test('explicit CLI checkouts ignore remote or stale terminal locations', async t
 
 test('CLI rejects cross-machine flags and unavailable agents before creating branches', async t => {
   const f = await fixture(t);
-  for (const args of [['new', 'bad', '--machine', 'devbox'], ['new', 'bad', '--on', 'devbox'], ['new', 'bad', '--program', 'pi']]) {
+  for (const args of [['new', 'bad', '--machine', 'devbox'], ['new', 'bad', '--on', 'devbox'], ['new', 'bad', '--execute', 'pi']]) {
     await assert.rejects(f.run([...args, '--checkout', f.project]), /Unknown option|unknown option|not installed/);
   }
   assert.equal(await f.git('branch', '--list', 'bad'), ''); assert.equal((await f.core()).terminals.length, 0);
@@ -93,7 +93,7 @@ test('CLI rejects cross-machine flags and unavailable agents before creating bra
 test('CLI detects a local agent and preserves a created checkout when terminal startup fails', async t => {
   const f = await fixture(t);
   await writeFile(join(f.bin, 'codex'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-  const agent = JSON.parse((await f.run(['open', 'main', '--checkout', f.project, '--program', 'codex', '--json'])).stdout);
+  const agent = JSON.parse((await f.run(['open', 'main', '--checkout', f.project, '--execute', 'codex', '--json'])).stdout);
   assert.equal(agent.program, 'codex');
   const call = (await f.core()).calls.find(call => call.method === 'terminal.run');
   assert.deepEqual(call.params.argv, [join(f.bin, 'codex'), '--no-daemon']);
@@ -109,6 +109,8 @@ test('CLI installer produces an executable usable without the source checkout', 
   const installed = join(prefix, 'bin/herdr-worktree-launcher');
   const help = await execute(installed, ['--help'], { cwd: f.elsewhere, env: { ...f.env, PATH: f.elsewhere } });
   assert.match(help.stdout, /--checkout/); assert.match(help.stdout, /--fetch REMOTE/);
+  assert.match(help.stdout, /--execute NAME/); assert.doesNotMatch(help.stdout, /--program/);
+  await assert.rejects(f.run(['new', 'unused', '--program', 'shell']), /Unknown option: --program/);
   const opened = await execute(installed, ['open', 'main', '--checkout', f.project, '--json'], { cwd: f.elsewhere, env: f.env });
   assert.equal(JSON.parse(opened.stdout).path, f.project);
 });
@@ -135,7 +137,7 @@ test('CLI dry-run previews creation, fetch and existing-worktree reuse without i
   await writeFile(join(f.project, 'staged.txt'), 'unstaged'); await writeFile(join(f.project, 'untracked.txt'), 'keep');
   const snapshot = () => Promise.all([f.git('rev-parse', 'HEAD'), f.git('for-each-ref'), f.git('worktree', 'list', '--porcelain'), f.git('status', '--porcelain'), f.git('diff'), f.git('diff', '--cached')]);
   const before = await snapshot(), env = { HC_SOCKET: '', HC_SESSION: '', WL_TEST_MARKER: marker };
-  const plan = JSON.parse((await f.run(['new', 'feature/preview', '--checkout', f.project, '--program', 'codex', '--fetch', 'origin', '--dry-run', '--json'], env)).stdout);
+  const plan = JSON.parse((await f.run(['new', 'feature/preview', '--checkout', f.project, '--execute=codex', '--fetch', 'origin', '--dry-run', '--json'], env)).stdout);
   assert.equal(plan.dry_run, true); assert.equal(plan.checkout, f.project); assert.equal(plan.project, f.project);
   assert.equal(plan.action, 'new'); assert.equal(plan.branch, 'feature/preview'); assert.equal(plan.ref, 'refs/heads/main');
   assert.equal(plan.commit, await f.git('rev-parse', 'main')); assert.equal(plan.path, join(f.home, '.herdr/worktrees/sample/feature-preview'));
@@ -179,7 +181,7 @@ test('CLI normal and dry-run commands reject invalid refs, branch collisions and
       [['new', 'occupied'], /occupied/],
       [['open', 'missing'], /unavailable/],
       [['new', 'valid', '--fetch', 'unknown-remote'], /configured Git remote/],
-      [['new', 'valid', '--program', 'pi'], /not installed/],
+      [['new', 'valid', '--execute', 'pi'], /not installed/],
     ]) await assert.rejects(f.run([...args, '--checkout', f.project, ...flag]), error);
     assert.deepEqual(await snapshot(), before);
   }

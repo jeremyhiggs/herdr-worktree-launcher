@@ -1397,7 +1397,7 @@ func run(args []string) (any, bool, error) {
 					return nil, false, fmt.Errorf("Option --%s takes no value", key)
 				}
 				flags[key] = true
-			case "checkout", "base", "program", "request", "fetch":
+			case "checkout", "base", "execute", "request", "fetch":
 				if !has {
 					i++
 					if i >= len(args) {
@@ -1559,7 +1559,7 @@ func run(args []string) (any, bool, error) {
 			}
 		}
 	}
-	key := values["program"]
+	key := values["execute"]
 	if key == "" {
 		key = "shell"
 		if interactive {

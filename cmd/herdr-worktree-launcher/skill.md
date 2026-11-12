@@ -7,7 +7,7 @@ starts a core. Install Worktrunk if `wt` is missing.
 
 ```sh
 herdr-worktree-launcher new feature/example --checkout /code/project --base main --json
-herdr-worktree-launcher open origin/feature/example --checkout /code/project --fetch origin --program codex --json
+herdr-worktree-launcher open origin/feature/example --checkout /code/project --fetch origin --execute codex --json
 herdr-worktree-launcher api --request '{"operation":"context"}'
 herdr-worktree-launcher api --request '{"operation":"project","path":"/code/project"}'
 ```
