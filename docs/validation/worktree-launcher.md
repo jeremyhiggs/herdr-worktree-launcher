@@ -18,9 +18,9 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
 | Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |
-| Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, and worktree creation through the CLI |
+| Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, worktree creation, and current-space defaults through the CLI |
 
-Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.14, and core 0.1.19.
+Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.15, and core 0.1.20.
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
@@ -28,7 +28,7 @@ Govulncheck reported standard-library advisory [GO-2026-6859](https://pkg.go.dev
 
 Disposable negative checks confirmed that Gitleaks rejects a synthetic secret and redacts its value. A local package with a postinstall script failed installation under the pnpm policy; its script did not run. These probes used temporary files and did not add repository dependencies.
 
-The GitHub workflows use the locally verified scripts. At `b24085e`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220295) passed Linux and macOS builds/tests and lint. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/42840220113) also passed. The later launcher features and security job still need a hosted run.
+The GitHub workflows use the locally verified scripts. At `a9862df`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812231) passed Linux and macOS builds/tests, lint, and the security job. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812270) also passed. This includes current-space defaults, dry-run, the `--execute` flag, and supply-chain hardening.
 
 ## Automated worktree scenarios
 
@@ -129,6 +129,8 @@ Other automated coverage includes discovery filters, repository naming, remote-r
 The native sample uses separate home, app, core-session, socket, shell, and XDG directories. It exercises the production view, model, and executable with disposable repositories and bare remotes. It does not use personal projects or restart the normal app/core.
 
 The fetch scene discovers a server-only branch from the selected remote. Existing-worktree opening preserves the worktree list. Reopening that checkout adds a fresh tab in the same space. New-branch creation opens a focused shell in its worktree.
+
+The latest capture also reopens the launcher from that created worktree. It asserts the automatic project and base-branch selections, with an empty new-branch name, before taking `current-space.png`. All seven README screenshots were refreshed and visually inspected.
 
 A separate native check opened the launcher from a linked-checkout subdirectory. It preselected the discovered project and `feature/context` base, with an empty new-branch name. This used the freshly built CLI and programmatic form-state assertions. Connected-machine defaults remain fixture-tested.
 

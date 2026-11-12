@@ -4,6 +4,8 @@ Create Git worktrees or start a fresh Herdr session from the desktop launcher or
 
 Choose a project, select a branch, and open a shell or coding agent. Your primary checkout stays intact.
 
+Start with the [desktop installation](#install-the-desktop-launcher) and [first-worktree guide](#create-your-first-worktree), or use the [standalone CLI](#use-the-terminal-cli).
+
 ## Features
 
 | Feature | What you can do |
@@ -17,6 +19,9 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
 | Native Herdr workflow | Keep worktrees grouped beneath their project, use keyboard controls, and follow Herdr's light or dark theme. |
 | Terminal CLI | Infer the current checkout and branch, or specify them explicitly. Works from a mobile terminal. |
+| Dry-run previews | Validate a CLI command and inspect its destination and session plan before creation. Text and JSON output are available. |
+| Agent automation | Use explicit commands, JSON results, `--help`, and bundled `--skill` instructions. Attach to the new terminal with `--attach`. |
+| Retry failed openings | Keep a created checkout and retry session startup. Unrelated projects and machines remain usable. |
 
 If a created worktree's session fails to open, you can retry opening it without repeating Git creation.
 
@@ -39,13 +44,15 @@ The installer copies the mod, checks it with your installed Herdr, and adds **�
 
 A dependency installation with `pnpm install` is not required.
 
+For prebuilt CLI archives and checksum instructions, see [Install a package](docs/packages.md). A prebuilt CLI needs no Go installation.
+
 If that shortcut is already assigned, use `pnpm run install:mod --no-shortcut`. You can open the launcher from your terminal:
 
 ```sh
 herdr-app do mod.open --name worktree-launcher
 ```
 
-The installed mod calls the CLI on the selected machine. It needs no Node process or additional mod. It was checked with Herdr app 0.1.13 and core 0.1.18.
+The installed mod calls the CLI on the selected machine. It needs no Node process or additional mod. The sample workflow was checked with Herdr app 0.1.15 and core 0.1.20.
 
 ### Choose a different shortcut
 
@@ -140,6 +147,8 @@ Omit `--checkout` when running inside the repository. Supply it when running fro
 
 Each successful command starts a **fresh terminal**. If a matching Herdr space exists, the CLI adds a new tab there. Otherwise, it creates a space. The desktop app adopts the space and tabs when it connects.
 
+Matching uses the exact checkout folder on that machine. A space for another checkout of the same repository stays separate.
+
 `--execute` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
 
 Use `--attach` to enter the new terminal immediately. Otherwise, the output includes an `hc attach` command. `--json` returns the checkout path and terminal, space, and tab IDs for scripts.
@@ -149,6 +158,30 @@ The CLI operates only on the machine where it runs. To use devbox, run the comma
 If session startup fails after Git succeeds, the CLI reports the preserved checkout path. Use `open` to retry session creation. The CLI stores no recovery state between invocations.
 
 Run `herdr-worktree-launcher --help` for all flags, or `--skill` for the agent API and safety contract. Worktrunk project hooks are skipped; run trusted setup commands yourself after creation. The installer accepts `--prefix DIRECTORY` for a different installation location.
+
+### Work from the current checkout
+
+From a linked worktree on `feature/payments`, `new` infers that repository and uses `feature/payments` as the base:
+
+```sh
+# Preview a new branch from this checkout's current branch.
+herdr-worktree-launcher new feature/payment-tests --dry-run
+
+# Create it, start Codex, and attach this terminal.
+herdr-worktree-launcher new feature/payment-tests --execute codex --attach
+
+# Open a fresh shell tab for an existing worktree.
+herdr-worktree-launcher open feature/payments
+```
+
+For an agent or script, request structured results without attaching:
+
+```sh
+herdr-worktree-launcher --skill
+herdr-worktree-launcher new feature/api-tests --execute codex --json
+```
+
+The JSON result identifies the checkout, terminal, space, and tab. Both desktop and mobile terminals can use the CLI on their own machine.
 
 ### Preview a command
 
@@ -206,6 +239,10 @@ For example, opening from a worktree on `feature/payments` selects that branch a
 
 If the checkout is detached, only the project is preselected. If no matching project is available, select a project and base manually. These suggestions apply only when the launcher opens; they do not replace later choices or persist between runs.
 
+![Launcher reopened from a sample worktree with sample-api and feature/rate-limits selected automatically](docs/screenshots/current-space.png)
+
+*The active worktree supplies the project and base branch. Enter a new branch name to continue.*
+
 ### Use an existing branch
 
 Select **Existing branch**, then choose a local or fetched remote branch. The branch-name field disappears.
@@ -213,6 +250,8 @@ Select **Existing branch**, then choose a local or fetched remote branch. The br
 If the branch already has a checkout, its folder appears in the picker and preview. Select **Open worktree** to open a session in that folder.
 
 The launcher reuses the checkout without changing its files or branches. You can also use checked-out branches as bases for new branches.
+
+Opening a fetched remote branch creates a local branch that tracks it. A **New branch** has no upstream until you configure one.
 
 ![Existing-branch picker showing an existing worktree folder and the Open worktree action](docs/screenshots/existing-branch.png)
 
@@ -267,6 +306,8 @@ The selected agent starts in the worktree with its Herdr launch settings. The pr
 ### Find the result
 
 The launcher opens the worktree in a Herdr space and reuses the primary project space when available. Herdr's standard sidebar groups worktrees beneath their project.
+
+No `spaces-grouped` mod is required. If the primary checkout has no live space, the launcher creates a shell space for it.
 
 ![A new worktree grouped beneath sample-api with its shell open](docs/screenshots/worktree-opened.png)
 
@@ -331,6 +372,10 @@ Updates preserve saved roots and recovery records. Installation does not restart
 - **No projects:** check the selected machine and root, then select **Refresh**.
 - **Cannot read a local folder:** check Herdr's permissions in System Settings → Privacy & Security → Files and Folders.
 - **Git succeeded but the space did not open:** select **Open created worktree** to retry without creating another checkout.
+
+The next launcher run starts fresh after verified creation. An uncertain Git outcome blocks conflicting operations on the same machine. A conflict means the same destination, or the same branch in the same repository.
+
+The launcher preserves failed checkouts for inspection. It never deletes worktrees or branches automatically.
 
 See [settings and troubleshooting](docs/worktree-launcher.md) for manual installation, recovery, and removal.
 
