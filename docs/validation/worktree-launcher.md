@@ -9,10 +9,10 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 95 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 99 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Biome/gofmt/shfmt formatting, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
-| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 50 commits. pnpm audit found no vulnerabilities. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
-| `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 93 Node tests, and standalone CLI build |
+| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 53 commits. pnpm audit found no vulnerabilities. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
+| `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 99 Node tests, and standalone CLI build |
 | Clean pnpm installs | Passed locally | Fresh unfrozen and frozen installs with pnpm 11.28.6; lockfile unchanged |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `scripts/test-package.sh` | Passed | All archive checksums, extracted CLI installation without `--binary`, packaged `pnpm run install:cli`, help with an empty runtime PATH, and packaged `pnpm run install:mod --help` |
@@ -31,7 +31,9 @@ Disposable negative checks confirmed that Gitleaks rejects a synthetic secret an
 
 Plain `pnpm install` also rejected an outdated lockfile in a disposable project. A fresh unfrozen install followed by a clean plain install passed under the committed `frozenLockfile: true` policy.
 
-After the full validation run, two installer safeguards were added: an occupied mod directory must identify Worktree Launcher, and bundled destinations must be regular files. Final lint and all 95 Node tests passed. The new tests verify that unrelated directories, symlinks, external targets, settings, and keybindings are preserved on refusal.
+Installer tests verify that unrelated directories, symlinks, external targets, settings, and keybindings are preserved on refusal. Failed native validation keeps the installed code and settings intact. A deterministic concurrent-creation test verifies that a new keybinding file is not overwritten between the final comparison and write. Fresh installation and repeated update also passed with the real native checker in an isolated app profile.
+
+Keyboard tests verify that Enter on Save, Browse, Refresh, Close, or action buttons cannot create a worktree. Client tests cover extended fetch/create execution budgets within Herdr's ten-minute cap. The Go runner retains cancellation and gives Git fetch and Worktrunk creation five minutes instead of the metadata command limit.
 
 The GitHub workflows use the locally verified scripts. At `a9862df`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812231) passed Linux and macOS builds/tests, lint, and the security job. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812270) also passed. This includes current-space defaults, dry-run, the `--execute` flag, and supply-chain hardening.
 
@@ -128,7 +130,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 95 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 99 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 

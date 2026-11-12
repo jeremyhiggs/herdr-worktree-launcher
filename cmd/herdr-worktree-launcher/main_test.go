@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,17 @@ import (
 type fixtureCore struct {
 	Terminals []terminal       `json:"terminals"`
 	Calls     []map[string]any `json:"calls"`
+}
+
+func TestCommandTimeoutCancelsTheProcess(t *testing.T) {
+	t.Setenv("WL_FIXTURE_HOLD_PIPE", "1")
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = commandTimeout(20*time.Millisecond, "", binary); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected a deadline error, got %v", err)
+	}
 }
 
 // The test binary doubles as a tiny hc executable. Production still uses only

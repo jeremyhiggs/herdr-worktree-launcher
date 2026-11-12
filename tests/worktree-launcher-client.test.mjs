@@ -45,6 +45,27 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
     assert.equal(calls.find((c) => c.value.operation === operation).value.request.core_id, 'app-core');
 });
 
+test('fetch and creation allow long operations within the native execution limit', async () => {
+  const calls = [];
+  const api = await connectCLI(async (_command, args, options) => {
+    const value = JSON.parse(args[2]);
+    calls.push({ operation: value.operation, options });
+    return {
+      code: 0,
+      stdout: JSON.stringify(value.operation === 'context' ? { protocol: 1 } : { request: value.request }),
+    };
+  });
+  await api.fetch({}, 'origin');
+  await api.create({ project: {} });
+  await api.choices({});
+  for (const { operation, options } of calls) {
+    if (['fetch', 'create'].includes(operation)) {
+      assert(options.timeout > 30000, `${operation} must outlast the native default`);
+      assert(options.timeout <= 600000, `${operation} must fit the native cap`);
+    } else assert.equal(options.timeout, undefined);
+  }
+});
+
 test('UI preserves CLI dependency/context errors and rejects incompatible or missing executables', async () => {
   await assert.rejects(
     connectCLI(async () => ({

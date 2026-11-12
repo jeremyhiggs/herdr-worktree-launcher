@@ -27,7 +27,7 @@ if (args[0] === '--version' && process.env.WL_CONFIG_DURING_VERSION) {
   writeFileSync(join(process.env.HERDR_APP_HOME, 'data/worktree-launcher-config.json'), process.env.WL_CONFIG_DURING_VERSION);
 }
 if (args[0] === 'check') {
-  if (!existsSync(join(args[1], 'main.js')) || !existsSync(join(process.env.HERDR_APP_HOME || join(process.env.HOME, '.config/herdr-app'), 'data/worktree-launcher-config.json'))) process.exit(2);
+  if (!existsSync(join(args[1], 'main.js'))) process.exit(2);
   if (process.env.WL_FAIL_CHECK) { console.error('injected native failure'); process.exit(1); }
 }
 `,
@@ -61,10 +61,12 @@ test('install copies a standalone mod, merges and backs up keys, and checks with
   const backup = (await readdir(f.app)).find((name) => name.endsWith('.bak'));
   assert.equal(await readFile(join(f.app, backup), 'utf8'), original);
   assert.equal(await readFile(recovery, 'utf8'), 'preserve recovery');
-  assert.deepEqual((await readFile(f.env.WL_EVENTS, 'utf8')).trim().split('\n').map(JSON.parse), [
-    ['--version'],
-    ['check', f.target],
-  ]);
+  const events = (await readFile(f.env.WL_EVENTS, 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.equal(events.length, 2);
+  assert.deepEqual(events[0], ['--version']);
+  assert.equal(events[1][0], 'check');
+  assert.notEqual(events[1][1], f.target, 'Validate a separate copy before replacing the installed code');
+  await assert.rejects(readdir(events[1][1]), { code: 'ENOENT' });
   assert.deepEqual(
     (await readdir(f.target)).sort(),
     [
@@ -170,6 +172,50 @@ test('no-shortcut preserves an existing binding and native check failures do not
     /Native check failed.*[\s\S]*shortcut was not changed.*[\s\S]*injected native failure/,
   );
   assert.equal(await readFile(f.keys, 'utf8'), '{}');
+});
+
+test('a failed replacement check preserves installed code, settings and shortcuts', async (t) => {
+  const f = await fixture(t);
+  await f.run(['--project-root', f.projects]);
+  await writeFile(join(f.target, 'main.js'), 'working installed code');
+  const configPath = join(f.app, 'data/worktree-launcher-config.json');
+  const config = await readFile(configPath, 'utf8');
+  const keys = await readFile(f.keys, 'utf8');
+  const next = join(f.root, 'next');
+  await mkdir(next);
+  await assert.rejects(f.run(['--project-root', next], { WL_FAIL_CHECK: '1' }), /Native check failed/);
+  assert.equal(await readFile(join(f.target, 'main.js'), 'utf8'), 'working installed code');
+  assert.equal(await readFile(configPath, 'utf8'), config);
+  assert.equal(await readFile(f.keys, 'utf8'), keys);
+  assert.deepEqual(await readdir(join(f.app, 'mods')), ['worktree-launcher']);
+});
+
+test('concurrent shortcut creation at the final write is preserved', async (t) => {
+  const f = await fixture(t);
+  const hook = join(f.root, 'concurrent-keys.mjs');
+  const original = '{"global":{"cmd-k":"app.palette"}}';
+  await writeFile(
+    hook,
+    `
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const write = fs.promises.writeFile;
+fs.promises.writeFile = async (path, value, options) => {
+  if (path === process.env.WL_RACE_KEYS) await write(path, process.env.WL_RACE_CONTENT, { flag: 'wx' });
+  return write(path, value, options);
+};
+syncBuiltinESMExports();
+`,
+  );
+  await assert.rejects(
+    f.run([], {
+      NODE_OPTIONS: `--import=${hook}`,
+      WL_RACE_KEYS: f.keys,
+      WL_RACE_CONTENT: original,
+    }),
+    /Keybindings changed during installation/,
+  );
+  assert.equal(await readFile(f.keys, 'utf8'), original);
 });
 
 test('default installation home follows HOME, and symlinked destinations are refused', async (t) => {

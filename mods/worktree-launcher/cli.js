@@ -1,8 +1,12 @@
 // Execution stays on the selected machine. The executable never routes between hosts.
 async function call(exec, machine, operation, args = {}) {
-  const result = await exec('herdr-worktree-launcher', ['api', '--request', JSON.stringify({ operation, ...args })], {
-    on: machine,
-  });
+  const options = { on: machine };
+  if (operation === 'fetch' || operation === 'create') options.timeout = 600000;
+  const result = await exec(
+    'herdr-worktree-launcher',
+    ['api', '--request', JSON.stringify({ operation, ...args })],
+    options,
+  );
   let value;
   try {
     value = JSON.parse(result.stdout);

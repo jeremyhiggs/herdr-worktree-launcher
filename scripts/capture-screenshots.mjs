@@ -45,7 +45,7 @@ async function waitFor(read, predicate, label) {
   throw new Error(`Timed out: ${label}`);
 }
 let launched = false,
-  appPid;
+  sampleApp;
 try {
   await Promise.all(
     ['home', 'shell', 'projects/acme', 'remotes', 'config', 'data', 'state', 'run', 'app/data'].map((path) =>
@@ -97,13 +97,13 @@ try {
   const log = await open(join(root, 'app.log'), 'a');
   try {
     const child = spawn('herdr-app', [], { cwd: root, env, detached: true, stdio: ['ignore', log.fd, log.fd] });
+    sampleApp = child;
     await new Promise((resolve, reject) => {
       child.once('spawn', resolve);
       child.once('error', reject);
     });
     child.unref();
     launched = true;
-    appPid = child.pid;
   } finally {
     await log.close();
   }
@@ -112,7 +112,7 @@ try {
     '-l',
     'JavaScript',
     '-e',
-    `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${appPid}).activateWithOptions(2);`,
+    `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${sampleApp.pid}).activateWithOptions(2);`,
   ]);
   await delay(1000);
   await waitFor(
@@ -205,6 +205,7 @@ try {
         await run(binary, args, 5000);
       } catch (error) {
         console.error(`Sample shutdown: ${error.message}`);
+        if (binary === 'herdr-app') sampleApp.kill('SIGTERM');
       }
     }
   }

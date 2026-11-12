@@ -505,6 +505,28 @@ test('Enter from a completed branch name or the form invokes Create only while e
   assert.equal(creates, 2);
 });
 
+test('Enter on secondary buttons never creates a worktree', () => {
+  const { view, cx } = keyboardView();
+  let creates = 0;
+  view.model.project = {};
+  view.model.ref = {};
+  view.model.name = 'feature';
+  view.model.submit = async () => {
+    creates++;
+  };
+  view.task = (_cx, work) => work();
+  view.openField = null;
+  view.activeInput = null;
+  for (const key of ['save-root', 'browse-root', 'refresh', 'close', 'new', 'existing']) {
+    view.buttons[key].focus();
+    view.key({ key: 'enter' }, cx);
+    assert.equal(creates, 0, `Enter on ${key} must retain its own action`);
+  }
+  view.buttons.create.focus();
+  view.key({ key: 'enter' }, cx);
+  assert.equal(creates, 1);
+});
+
 test('Enter selects an open picker choice and root Enter still saves configuration', () => {
   const { view, cx } = keyboardView();
   view.model.project = {};

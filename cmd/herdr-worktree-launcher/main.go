@@ -69,7 +69,10 @@ func uuid() string {
 }
 
 func command(cwd, program string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	return commandTimeout(120*time.Second, cwd, program, args...)
+}
+func commandTimeout(timeout time.Duration, cwd, program string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Dir = cwd
@@ -1006,7 +1009,7 @@ func create(r Request) (Result, error) {
 	} else {
 		args = append(args, r.Name)
 	}
-	out, runErr := command(r.Project.Path, "wt", args...)
+	out, runErr := commandTimeout(5*time.Minute, r.Project.Path, "wt", args...)
 	// Worktrunk may emit its successful checkout before a later failure. Parse that
 	// output even on nonzero exit; Git identity remains the authority for recovery.
 	var wtResult map[string]any
@@ -1310,7 +1313,7 @@ func fetch(p Project, remote string) ([]Ref, error) {
 	if err := validateRemote(p, remote); err != nil {
 		return nil, err
 	}
-	if _, err := git(p.Path, "fetch", "--no-tags", "--no-recurse-submodules", "--", remote); err != nil {
+	if _, err := commandTimeout(5*time.Minute, p.Path, "git", "--no-optional-locks", "fetch", "--no-tags", "--no-recurse-submodules", "--", remote); err != nil {
 		return nil, err
 	}
 	return choices(p)

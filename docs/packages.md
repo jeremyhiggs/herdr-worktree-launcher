@@ -37,7 +37,7 @@ With Node 24 or newer, pnpm 11.x, and `herdr-app` on PATH, run:
 pnpm run install:mod
 ```
 
-Run the same command again to update the mod. Saved roots and existing settings are preserved. The installer checks native loading and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
+Run the same command again to update the mod. Saved roots and existing settings are preserved. The installer checks native loading before replacing installed code or settings and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
 
 If you do not use pnpm, run `node scripts/install-mod.mjs` instead. No dependency installation is required.
 

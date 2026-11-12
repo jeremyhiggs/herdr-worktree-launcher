@@ -1,4 +1,16 @@
-import { access, copyFile, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import {
+  access,
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -124,26 +136,38 @@ async function install() {
   }
 
   await execute('herdr-app', ['--version'], { timeout: 10000 });
-  await mkdir(target, { recursive: true });
-  for (const file of files) await copyFile(join(source, file), join(target, file));
-  if (originalConfig === null || values['project-root'] !== undefined) {
-    await mkdir(dirname(configPath), { recursive: true });
-    if ((await readOptional(configPath)) !== originalConfig)
-      throw new Error('Project-root settings changed during installation. They were preserved; rerun the installer.');
-    try {
-      await writeFile(configPath, json(config), originalConfig === null ? { flag: 'wx' } : {});
-    } catch (error) {
-      if (error.code === 'EEXIST')
-        throw new Error('Project-root settings changed during installation. They were preserved; rerun the installer.');
-      throw error;
-    }
-  }
+  await mkdir(dirname(target), { recursive: true });
+  const staging = await mkdtemp(join(dirname(target), '.worktree-launcher-install-'));
   try {
-    await execute('herdr-app', ['check', target], { env: { ...process.env, HERDR_APP_HOME: appHome }, timeout: 30000 });
-  } catch (error) {
-    throw new Error(
-      `Native check failed. Mod files remain at ${target}; the shortcut was not changed.\n${error.stderr || error.message}`,
-    );
+    for (const file of files) await copyFile(join(source, file), join(staging, file));
+    try {
+      await execute('herdr-app', ['check', staging], {
+        env: { ...process.env, HERDR_APP_HOME: appHome },
+        timeout: 30000,
+      });
+    } catch (error) {
+      throw new Error(
+        `Native check failed. Installed mod and settings were preserved; the shortcut was not changed.\n${error.stderr || error.message}`,
+      );
+    }
+    if (originalConfig === null || values['project-root'] !== undefined) {
+      await mkdir(dirname(configPath), { recursive: true });
+      if ((await readOptional(configPath)) !== originalConfig)
+        throw new Error('Project-root settings changed during installation. They were preserved; rerun the installer.');
+      try {
+        await writeFile(configPath, json(config), originalConfig === null ? { flag: 'wx' } : {});
+      } catch (error) {
+        if (error.code === 'EEXIST')
+          throw new Error(
+            'Project-root settings changed during installation. They were preserved; rerun the installer.',
+          );
+        throw error;
+      }
+    }
+    await mkdir(target, { recursive: true });
+    for (const file of files) await copyFile(join(staging, file), join(target, file));
+  } finally {
+    await rm(staging, { recursive: true, force: true });
   }
   if (changeKeys) {
     if ((await readOptional(keysPath)) !== originalKeys)
@@ -155,7 +179,13 @@ async function install() {
       await writeFile(backup, originalKeys, { flag: 'wx', mode: 0o600 });
       console.log(`Keybinding backup: ${backup}`);
     }
-    await writeFile(keysPath, json(keys));
+    try {
+      await writeFile(keysPath, json(keys), originalKeys === null ? { flag: 'wx' } : {});
+    } catch (error) {
+      if (error.code === 'EEXIST')
+        throw new Error('Keybindings changed during installation. They were preserved; rerun the installer.');
+      throw error;
+    }
   }
   console.log(
     `Installed Worktree Launcher: ${target}\nLocal project root: ${config.project_root || 'configure in the launcher'}\nNative module check passed.`,

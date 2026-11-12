@@ -496,6 +496,7 @@ export default class WorktreeLauncher extends View {
   }
 
   key(event, cx) {
+    const focusedButton = Object.keys(this.buttons).find((key) => this.buttons[key].is_focused?.());
     if (this.initializing && event.key !== 'escape') {
       if (event.key === 'tab') this.buttons.close.focus();
       else if (event.key === 'enter' && this.buttons.close.is_focused()) this.dismiss();
@@ -523,7 +524,7 @@ export default class WorktreeLauncher extends View {
         'close',
         this.model.phase === 'recover' ? 'open-created' : 'create',
       ];
-      const current = this.activeInput || order.find((key) => this.buttons[key]?.is_focused());
+      const current = this.activeInput || focusedButton;
       const step = event.modifiers.shift ? -1 : 1;
       const next = order[(Math.max(0, order.indexOf(current)) + step + order.length) % order.length];
       this.openField = null;
@@ -534,7 +535,7 @@ export default class WorktreeLauncher extends View {
       cx.stop_propagation();
       this.dismiss();
       cx.notify();
-    } else if (event.key === 'enter' && this.buttons.fetch.is_focused?.()) {
+    } else if (event.key === 'enter' && focusedButton === 'fetch') {
       cx.stop_propagation();
       this.fetchRemote(cx);
     } else if (event.keystroke === 'cmd-enter') {
@@ -542,7 +543,13 @@ export default class WorktreeLauncher extends View {
       if (this.activeInput === 'root') this.saveRoot(cx);
       else if (this.activeInput === 'remote') this.fetchRemote(cx);
       else this.task(cx, (open) => this.model.submit(open));
-    } else if (event.key === 'enter' && this.model.canCreate && !this.openField && this.activeInput !== 'root') {
+    } else if (
+      event.key === 'enter' &&
+      this.model.canCreate &&
+      !this.openField &&
+      this.activeInput !== 'root' &&
+      (!focusedButton || focusedButton === 'create')
+    ) {
       cx.stop_propagation();
       this.task(cx, (open) => this.model.submit(open));
     } else if (
