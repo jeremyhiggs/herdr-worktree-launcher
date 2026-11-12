@@ -1,6 +1,6 @@
 import { View, div } from 'gpui-kit';
 import { v_flex, h_flex, InputState, Input, Button, Popup, v_virtual_list, VirtualListScrollHandle, Scrollbar, TextView } from 'gpui-base';
-import { exec, appHome, readTextFile, writeTextFile, spaces, panes, machines, knownAgents, pickFolder, run, theme, props, closeOverlay } from 'herdr';
+import { exec, appHome, readTextFile, writeTextFile, spaces, panes, focused, machines, knownAgents, pickFolder, run, theme, props, closeOverlay } from 'herdr';
 import { connectCLI, listCLIPrograms } from './cli.js';
 import { createConfigStore } from './config.js';
 import { createJournalStore } from './journal.js';
@@ -14,6 +14,9 @@ function selectableText(id, text) {
 export default class WorktreeLauncher extends View {
   init(_props, cx) {
     const space = spaces().find(s => s.active);
+    const current = focused();
+    const tabs = new Set((space?.tabs ?? []).filter(tab => tab.active).map(tab => tab.id));
+    const folder = (space && current?.space === space.id && current?.cwd) || panes().find(p => tabs.has(p.tab) && p.cwd)?.cwd || space?.folder;
     this.handle = cx.focus_handle();
     this.handle.focus();
     this.scroll = VirtualListScrollHandle.new();
@@ -61,8 +64,8 @@ export default class WorktreeLauncher extends View {
       let generation = this.model.generation;
       await pending;
       if (this.model.closed || generation !== this.model.generation) return;
-      if (space?.folder && this.model.git) {
-        const selection = await this.model.git.selection(space.folder).catch(() => null);
+      if (folder && this.model.git) {
+        const selection = await this.model.git.selection(folder).catch(() => null);
         if (this.model.closed || generation !== this.model.generation) return;
         const project = this.model.projects.find(row => row.id === selection?.project.id);
         if (project) {

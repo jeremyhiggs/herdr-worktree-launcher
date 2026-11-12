@@ -8,7 +8,7 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 const modules = {
   'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
   'gpui-base': 'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:el},Input={new:el},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
-  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>globalThis.launcherSpaces,panes=null,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
+  herdr: 'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>globalThis.launcherSpaces,panes=()=>globalThis.launcherPanes,focused=()=>globalThis.launcherFocused,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
 registerHooks({
   resolve(specifier, context, next) { return Object.hasOwn(modules, specifier) ? { url: `native:${specifier}`, shortCircuit: true } : next(specifier, context); },
@@ -16,9 +16,11 @@ registerHooks({
 });
 const { default: Launcher } = await import('../mods/worktree-launcher/main.js');
 
-function keyboardView(phase = 'editing', spaces = []) {
+function keyboardView(phase = 'editing', spaces = [], { panes = [], focused = null } = {}) {
   globalThis.launcherClosedOverlays = [];
   globalThis.launcherSpaces = spaces;
+  globalThis.launcherPanes = panes;
+  globalThis.launcherFocused = focused;
   const handlers = new Map(), bindings = [], opacities = [], focus = [];
   const nativeWindow = { active: false, activations: 0, activate_window() { this.active = true; this.activations++; }, is_window_active() { return this.active; } };
   globalThis.window = nativeWindow;
@@ -82,6 +84,44 @@ test('opening preselects the active space repository and checkout branch on its 
     assert.equal(view.model.name, ''); assert.equal(view.model.canCreate, false);
     view.model.selectRef(null); // The selection remains an editable suggestion.
     assert.equal(view.model.ref, null);
+  }
+});
+
+test('opening uses the live terminal checkout rather than the space starting folder', async () => {
+  for (const machine of [null, 'devbox']) {
+    for (const source of ['focused', 'active-tab', 'mod-pane', 'other-space']) {
+      const space = { id: 'current-space', active: true, machine, folder: '/starting-folder', tabs: [{ id: 'current-tab', active: true }, { id: 'old-tab', active: false }] };
+      const current = { tab: 'current-tab', cwd: '/checkouts/feature/src', terminal: 't1' };
+      const context = {
+        focused: source === 'focused' ? { space: space.id, cwd: current.cwd, pane: null } : source === 'mod-pane' ? { space: space.id, cwd: null } : source === 'other-space' ? { space: 'other-space', cwd: '/unrelated/repo' } : null,
+        panes: [{ tab: 'foreign-tab', cwd: '/another/machine' }, { tab: 'old-tab', cwd: '/old/checkout' }, ...(source === 'focused' ? [] : [{ tab: 'current-tab', cwd: null }, current])],
+      };
+      const { view, initialWork } = keyboardView('loading', [space], context);
+      const project = { id: 'repo', path: '/projects/app', label: 'app', machine };
+      const ref = { ref: 'refs/heads/feature/current', label: 'feature/current · local' };
+      const calls = [];
+      view.model.config = async () => ({ project_root: '/projects' });
+      view.model.listAgents = async () => [];
+      view.model.connect = async on => {
+        assert.equal(on, machine);
+        return {
+          discover: async () => [project], choices: async () => [ref], remotes: async () => [],
+          selection: async path => {
+            calls.push(path);
+            if (path !== current.cwd) throw new Error('Not a repository');
+            return { project, ref: ref.ref };
+          },
+        };
+      };
+      // Focus can move while discovery runs; use the context captured on opening.
+      globalThis.launcherFocused = { space: 'other-space', cwd: '/changed/after-opening' };
+      await initialWork(null, () => {});
+      assert.deepEqual(calls, [current.cwd], `${machine ?? 'local'}: ${source}`);
+      assert.equal(view.model.project, project);
+      assert.equal(view.model.ref, ref);
+      assert.equal(view.inputs.project.value(), project.label);
+      assert.equal(view.inputs.ref.value(), ref.label);
+    }
   }
 });
 

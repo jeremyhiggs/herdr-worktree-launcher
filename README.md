@@ -235,6 +235,8 @@ You can also enter an absolute project-root path directly. The launcher saves a 
 
 When you open the launcher, it selects the active space's machine. If its repository appears under the saved project root, the launcher preselects that project and the checkout's current branch.
 
+The lookup uses the focused terminal's live folder, including changes since the space was created. If no terminal has focus, it uses a terminal in the active tab, then the space's starting folder.
+
 For example, opening from a worktree on `feature/payments` selects that branch as the base for a new worktree. Enter a new branch name to continue. You can change either selection.
 
 If the checkout is detached, only the project is preselected. If no matching project is available, select a project and base manually. These suggestions apply only when the launcher opens; they do not replace later choices or persist between runs.

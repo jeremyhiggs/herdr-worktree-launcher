@@ -79,6 +79,13 @@ try {
   const before = await run('git', ['-C', join(root, 'projects/acme/sample-api'), 'worktree', 'list', '--porcelain']);
   let firstOpening;
   for (const [scene, filename] of [['new', 'new-branch.png'], ['fetch', 'fetch-remote.png'], ['existing', 'existing-branch.png'], ['agents', 'open-with.png'], ['reuse', null], ['reuse-again', 'fresh-tab.png'], ['create', 'worktree-opened.png'], ['current', 'current-space.png']]) {
+    if (scene === 'current') {
+      const state = JSON.parse(await app(['ls']));
+      const primary = state.spaces.find(space => space.folder === join(root, 'projects/acme/sample-api') && !space.machine);
+      if (!primary) throw new Error('Primary sample space missing.');
+      await app(['do', 'space.select', '--id', primary.id]);
+      await app(['do', 'tab.new', '--name', 'Live checkout', '--space', primary.id, '--folder', join(root, 'home/.herdr/worktrees/sample-api/feature-rate-limits')]);
+    }
     if (['reuse-again', 'create', 'current'].includes(scene)) await app(['do', 'mod.open', '--name', 'worktree-launcher']);
     await app(['do', `worktree-launcher.${scene}`]);
     const result = await waitFor(async () => {

@@ -33,6 +33,8 @@ herdr-app do mod.open --name worktree-launcher
 
 The launcher starts on the active space's machine. If its repository appears under the saved root, the project and current checkout branch are preselected. This also works from a linked worktree. Enter a new branch name, or change the suggestions. A detached checkout leaves the base unselected.
 
+The lookup uses the focused terminal's live folder. Its fallbacks are a terminal in the active tab, then the space's starting folder.
+
 1. Select **Local** or a connected machine.
 2. Use **Browse…** to choose the directory that contains your projects, or enter its absolute path.
 3. Select **Save**.

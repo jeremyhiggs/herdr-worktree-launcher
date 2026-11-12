@@ -111,7 +111,7 @@ An additional scene opens a pre-existing checkout in its custom folder and check
 
 Reopening that checkout must add a fresh terminal tab to the same space. The capture checks the space, tab count, and terminal identity. It exports this second opening as `fresh-tab.png`.
 
-After creation, the capture reopens the launcher from the new worktree. It verifies automatic project and base-branch selection before exporting `current-space.png`.
+After creation, the capture opens a tab for the new worktree inside the primary project's space. It reopens the launcher and verifies automatic project and base-branch selection before exporting `current-space.png`. This catches stale lookups of the space's starting folder.
 
 To verify the native flow without replacing README images, use a different output directory:
 
