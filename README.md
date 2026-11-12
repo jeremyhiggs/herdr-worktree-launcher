@@ -79,7 +79,7 @@ Key names use `cmd`, `ctrl`, `alt` (Option), and `shift`, joined with hyphens. B
 To install without the default shortcut, use `pnpm run install:mod --no-shortcut`. For later updates, use:
 
 ```sh
-pnpm run install:mod --update --no-shortcut
+pnpm run install:mod --no-shortcut
 ```
 
 This preserves your custom binding and prevents the installer from adding **⌘⇧G** again.
@@ -112,7 +112,7 @@ To install an existing binary without build tools, run:
 
 To build without installation, run `./scripts/build-cli.sh`. The output is `dist/herdr-worktree-launcher` for your platform.
 
-To rebuild and update the installed command, run `./scripts/install-cli.sh --update`. For a prebuilt update, also supply `--binary FILE`.
+To rebuild and update the installed command, run `./scripts/install-cli.sh` again. A downloaded package uses its bundled executable automatically. `--binary FILE` selects a different prebuilt executable when needed.
 
 ### Choose the canonical checkout
 
@@ -319,6 +319,8 @@ No `spaces-grouped` mod is required. If the primary checkout has no live space, 
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. For example, `feature/rate-limits` becomes `sample-api/feature-rate-limits`.
 
+You can change the destination root for both UI and CLI in the selected machine's [CLI configuration](docs/worktree-launcher.md#configure-the-worktree-root). Existing worktrees keep their folders.
+
 The repository name comes from its `origin` URL. Without an origin, the launcher checks the selected project's root files in this order:
 
 1. `name` in [`package.json`](https://docs.npmjs.com/cli/configuring-npm/package-json/).
@@ -361,8 +363,8 @@ The UI follows Herdr's light or dark theme, including system appearance when Her
 From an updated copy of this repository, run:
 
 ```sh
-./scripts/install-cli.sh --update
-pnpm run install:mod --update
+./scripts/install-cli.sh
+pnpm run install:mod
 ```
 
 If you use a custom shortcut, add `--no-shortcut` to preserve it without restoring the default binding.
@@ -387,7 +389,7 @@ For contributors, see [development](docs/development.md) and the [validation rep
 
 The [scenario matrix](docs/validation/worktree-launcher.md#automated-worktree-scenarios) lists worktree and recovery tests, CI coverage, and separate native checks.
 
-Run `./scripts/validate.sh` for lint, security checks, tests, and the CLI build. Run `./scripts/security.sh` for Gitleaks and Go vulnerability checks only. The scanners are pinned development tools installed by `mise install`; the Go executable does not need them.
+Run `./scripts/validate.sh` for formatting, lint, secret and dependency checks, tests, and the CLI build. CI runs the same script on Linux and macOS. Run `./scripts/security.sh` for Gitleaks, pnpm audit, and Go vulnerability checks, or `./scripts/deps-check.sh` for dependency checks alone. The scanners are pinned development tools installed by `mise install`; the Go executable does not need them.
 
 GitHub workflows run these checks on pushes and pull requests, with weekly CI checks as well. All actions use full commit SHA pins. pnpm policy restricts dependency sources and build scripts, and delays new package releases for seven days. See [development](docs/development.md) for the policy and scanner coverage.
 

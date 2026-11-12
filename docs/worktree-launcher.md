@@ -69,6 +69,26 @@ The launcher rechecks repository identity, branch state, and destination before 
 
 The destination is `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. Its home directory supplies `~`.
 
+### Configure the worktree root
+
+The UI and CLI read the same target-machine setting. Create `~/.config/herdr-worktree-launcher/config.json` on the machine where worktrees will be created:
+
+```json
+{
+  "worktree_root": "/absolute/worktrees"
+}
+```
+
+Choose an existing absolute directory. It can be outside your home directory. New destinations use `<worktree_root>/<repository-name>/<branch-slug>`.
+
+If `XDG_CONFIG_HOME` is set, the file belongs at `$XDG_CONFIG_HOME/herdr-worktree-launcher/config.json` instead.
+
+The `HERDR_WORKTREE_ROOT` environment variable overrides the file. Without either setting, the default remains `~/.herdr/worktrees`. Invalid settings stop new creation before Git changes. Existing worktrees keep their actual paths, including after a root change.
+
+This destination setting is separate from the desktop app's saved project roots. Configure it on each target machine, including remote machines.
+
+### Repository and branch folders
+
 The repository name comes from the `origin` URL without `.git`. Without an origin, the launcher checks these sources in order:
 
 1. The selected project's root `package.json` name.

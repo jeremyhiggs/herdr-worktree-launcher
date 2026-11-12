@@ -21,6 +21,12 @@ origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.
 
+Destination configuration is local to the target machine. Read `worktree_root`
+from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-worktree-launcher/config.json`.
+`HERDR_WORKTREE_ROOT` overrides that file; otherwise the default is
+`~/.herdr/worktrees`. A custom root must be an existing absolute directory.
+Malformed configuration fails before creation. Existing checkouts keep their paths.
+
 Use `--dry-run` with `new` or `open` to validate and print the plan without mutation.
 Add `--json` for fields including checkout, project, action, branch, ref, commit,
 path, worktree_action (create/reuse), program, argv, fetch, and session_action.

@@ -4,9 +4,22 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 output="$root/dist/packages"
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --output) [ "$#" -ge 2 ] && [ -n "$2" ] || { echo '--output requires a directory' >&2; exit 1; }; output=$2; shift 2 ;;
-    --help) echo 'Usage: scripts/package.sh [--output DIRECTORY]'; exit 0 ;;
-    *) echo "Unknown packaging argument: $1" >&2; exit 1 ;;
+  --output)
+    [ "$#" -ge 2 ] && [ -n "$2" ] || {
+      echo '--output requires a directory' >&2
+      exit 1
+    }
+    output=$2
+    shift 2
+    ;;
+  --help)
+    echo 'Usage: scripts/package.sh [--output DIRECTORY]'
+    exit 0
+    ;;
+  *)
+    echo "Unknown packaging argument: $1" >&2
+    exit 1
+    ;;
   esac
 done
 case "$output" in /*) ;; *) output="$PWD/$output" ;; esac
@@ -31,6 +44,12 @@ for file in main.js model.js cli.js config.js journal.js mod.json config.example
   cp "$root/mods/worktree-launcher/$file" "$staging/$name/mods/worktree-launcher/"
 done
 cp "$root/scripts/install-mod.mjs" "$staging/$name/scripts/"
+node -e '
+const fs = require("node:fs");
+const source = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const manifest = { name: source.name, private: true, type: "module", packageManager: source.packageManager, engines: source.engines, scripts: { "install:mod": source.scripts["install:mod"] } };
+fs.writeFileSync(process.argv[2], JSON.stringify(manifest, null, 2) + "\n");
+' "$root/package.json" "$staging/$name/package.json"
 cp "$root/docs/packages.md" "$staging/$name/README.md"
 cp "$root/LICENSE" "$staging/$name/"
 archive="$name.tar.gz"
@@ -38,8 +57,8 @@ tar -czf "$output/$archive" -C "$staging" "$name"
 set -- "$@" "$archive"
 cd "$output"
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum "$@" > SHA256SUMS
+  sha256sum "$@" >SHA256SUMS
 else
-  shasum -a 256 "$@" > SHA256SUMS
+  shasum -a 256 "$@" >SHA256SUMS
 fi
 printf 'Packages and SHA256SUMS: %s\n' "$output"

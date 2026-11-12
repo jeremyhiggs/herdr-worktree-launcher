@@ -14,7 +14,7 @@ pnpm run install:mod
 For an existing installation, run:
 
 ```sh
-pnpm run install:mod --update
+pnpm run install:mod
 ```
 
 The installer requires Node 24 or newer, pnpm 11.x, and `herdr-app` in your terminal. The installed mod needs no Node process or additional mod.
@@ -90,6 +90,8 @@ The CLI reuses a space for the exact checkout, or assigns a new space to its ter
 ## Paths and settings
 
 Worktrees go to `~/.herdr/worktrees/<repository-name>/<branch-slug>` on the selected machine. The repository name comes from `origin`.
+
+To change the worktree root, create `~/.config/herdr-worktree-launcher/config.json` on that machine with `{"worktree_root":"/absolute/worktrees"}`. If `XDG_CONFIG_HOME` is set, use its `herdr-worktree-launcher/config.json` instead. The custom root must be an existing directory. `HERDR_WORKTREE_ROOT` overrides the file. Existing checkouts keep their folders.
 
 Without an origin, the launcher checks the selected project's root `package.json` name, then `pyproject.toml` names under `[project]` or `[tool.poetry]`. An npm scope is removed. Missing or unusable names fall back to the selected project folder.
 

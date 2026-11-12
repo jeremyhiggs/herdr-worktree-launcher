@@ -23,6 +23,9 @@ The current directory selects the checkout unless --checkout overrides it.
 New branches default to that checkout's branch, including linked worktrees.
 For a detached checkout, supply --base. Worktrees are placed under
 ~/.herdr/worktrees/<repository>/<branch-slug>; existing checkouts keep their path.
+Set worktree_root in ~/.config/herdr-worktree-launcher/config.json to change
+that root for UI and CLI operations. XDG_CONFIG_HOME changes the config directory.
+HERDR_WORKTREE_ROOT overrides the file. A custom root must already exist.
 Worktrunk owns creation. Backend calls use --no-hooks to skip Worktrunk project
 hooks. Run trusted setup manually afterwards. No files or branches are deleted.
 If terminal startup fails, the checkout is preserved; retry with open BRANCH.

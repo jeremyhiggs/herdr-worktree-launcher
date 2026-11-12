@@ -9,10 +9,10 @@ Choose `darwin` for macOS or `linux` for Linux. Choose `arm64` for Apple Silicon
 Extract the archive and enter its directory. Then run:
 
 ```sh
-./scripts/install-cli.sh --binary ./herdr-worktree-launcher
+./scripts/install-cli.sh
 ```
 
-This installs the command in `~/.local/bin`. Add that directory to PATH. Use `--update` to replace an existing installation.
+The installer detects the bundled executable. It needs no Go installation. It installs the command in `~/.local/bin`; add that directory to PATH. Run the same command again to update it. An unrelated existing command is preserved.
 
 The executable needs Git, Worktrunk (`wt`), and Herdr Core (`hc`) on PATH. It needs no Go or Node runtime.
 
@@ -29,13 +29,15 @@ herdr-worktree-launcher --skill
 
 Install the CLI and its dependencies on each target machine first. Extract `worktree-launcher-mod.tar.gz` and enter its directory.
 
-With Node 24 or newer and `herdr-app` on PATH, run:
+With Node 24 or newer, pnpm 11.x, and `herdr-app` on PATH, run:
 
 ```sh
-node scripts/install-mod.mjs
+pnpm run install:mod
 ```
 
-For an update, add `--update`. The installer checks native loading and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
+Run the same command again to update the mod. Saved roots and existing settings are preserved. The installer checks native loading and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
+
+If you do not use pnpm, run `node scripts/install-mod.mjs` instead. No dependency installation is required.
 
 Node is required only for this installer. The running mod calls the standalone CLI. The mod supplies a verified running core ID automatically. No manual core environment export is required for the desktop UI.
 

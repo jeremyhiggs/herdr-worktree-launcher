@@ -155,6 +155,8 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", f.home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	t.Setenv("HERDR_WORKTREE_ROOT", "")
 	t.Setenv("PATH", f.bin+":/usr/bin:/bin")
 	t.Setenv("HC_SOCKET", filepath.Join(root, "fixture.sock"))
 	t.Setenv("HC_SESSION", "")
@@ -911,6 +913,100 @@ func TestSymlinkedHomeCreatesVerifiableWorktree(t *testing.T) {
 	}
 	if inspected := inspect(r, true); inspected.Kind != "created" {
 		t.Fatalf("inspect: %+v", inspected)
+	}
+}
+
+func TestConfiguredWorktreeRootCreatesOutsideHomeAndReusesItsCheckout(t *testing.T) {
+	f := setup(t)
+	root := filepath.Join(f.root, "shared-worktrees")
+	configDir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "herdr-worktree-launcher")
+	for _, path := range []string{root, configDir} {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config, _ := json.Marshal(map[string]string{"worktree_root": root})
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), config, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := f.prepare(t, "new", "refs/heads/main", "configured")
+	if r.Path != filepath.Join(root, "sample", "configured") {
+		t.Fatalf("configured destination: %s", r.Path)
+	}
+	result, err := create(r)
+	if err != nil || result.Kind != "created" {
+		t.Fatalf("create: %+v %v", result, err)
+	}
+	other := filepath.Join(f.root, "other-worktrees")
+	if err := os.Mkdir(other, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_WORKTREE_ROOT", other)
+	reused := f.prepare(t, "existing", "refs/heads/configured", "")
+	if !reused.Reuse || reused.Path != r.Path {
+		t.Fatalf("existing checkout moved after root change: %+v", reused)
+	}
+	if inspected := inspect(r, true); inspected.Kind != "created" {
+		t.Fatalf("inspect after root change: %+v", inspected)
+	}
+	preview := f.prepare(t, "new", "refs/heads/main", "environment")
+	if preview.Path != filepath.Join(other, "sample", "environment") {
+		t.Fatalf("environment override: %s", preview.Path)
+	}
+	if _, err := os.Stat(preview.Path); !os.IsNotExist(err) {
+		t.Fatal("preparing created a directory")
+	}
+}
+
+func TestWorktreeRootConfigurationErrorsStopBeforeCreation(t *testing.T) {
+	for _, value := range []string{`{invalid`, `{"worktree_root":"relative"}`, `{"worktree_root":"/missing-worktree-root-fixture"}`} {
+		t.Run(value, func(t *testing.T) {
+			f := setup(t)
+			dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "herdr-worktree-launcher")
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(value), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := prepare(input{Project: f.p, Action: "new", Ref: "refs/heads/main", Name: "blocked"}); err == nil {
+				t.Fatal("invalid configuration accepted")
+			}
+			if f.git(t, "branch", "--list", "blocked") != "" {
+				t.Fatal("branch created with invalid configuration")
+			}
+		})
+	}
+}
+
+func TestWorktreeRootChangesAndSymlinkedChildrenRefuseCreation(t *testing.T) {
+	f := setup(t)
+	first, second := filepath.Join(f.root, "first-store"), filepath.Join(f.root, "second-store")
+	for _, path := range []string{first, second} {
+		if err := os.Mkdir(path, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HERDR_WORKTREE_ROOT", first)
+	r := f.prepare(t, "new", "refs/heads/main", "changed-root")
+	t.Setenv("HERDR_WORKTREE_ROOT", second)
+	result, err := create(r)
+	if err != nil || result.Kind != "absent" || !strings.Contains(result.Error, "changed") {
+		t.Fatalf("changed root: %+v %v", result, err)
+	}
+	if f.git(t, "branch", "--list", "changed-root") != "" {
+		t.Fatal("branch created after root changed")
+	}
+	t.Setenv("HERDR_WORKTREE_ROOT", first)
+	if err := os.Symlink(second, filepath.Join(first, f.p.Basename)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepare(input{Project: f.p, Action: "new", Ref: "refs/heads/main", Name: "symlinked"}); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("symlink accepted: %v", err)
+	}
+	entries, err := os.ReadDir(second)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("symlink target changed: %v %v", entries, err)
 	}
 }
 

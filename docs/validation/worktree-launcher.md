@@ -9,24 +9,29 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 92 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
-| `scripts/lint.sh` | Passed | Go formatting/vet, JavaScript syntax, ShellCheck, and GitHub workflow validation |
-| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 46 commits. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
-| `scripts/validate.sh` | Passed locally | Lint, security checks, Go race tests, 89 Node tests, and standalone CLI build |
+| Node tests | 95 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| `scripts/lint.sh` | Passed | Biome/gofmt/shfmt formatting, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
+| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 50 commits. pnpm audit found no vulnerabilities. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
+| `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 93 Node tests, and standalone CLI build |
 | Clean pnpm installs | Passed locally | Fresh unfrozen and frozen installs with pnpm 11.28.6; lockfile unchanged |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
+| `scripts/test-package.sh` | Passed | All archive checksums, extracted CLI installation without `--binary`, help with an empty runtime PATH, and packaged `pnpm run install:mod --help` |
 | `herdr-app check mods/worktree-launcher` | Passed | Native production mod loading in Herdr app 0.1.15 |
 | Configured-core handoff without environment selectors | Passed | Production UI JSON client, real Git/Worktrunk creation, and a shell session on an isolated core. Both HC selectors absent. Standalone command still refused missing context. |
 | Headless executable | Passed | Real core sessions with Node and Bun absent from PATH; distinct terminals and tabs; later desktop adoption |
 | Disposable native UI | Passed | Discovery, remote fetch, existing-worktree opening, a fresh second tab, worktree creation, and current-space defaults through the CLI |
 
-Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Herdr app 0.1.15, and core 0.1.20.
+Current tools: Go 1.27.3, Worktrunk 0.81.0, Node 24.22.2, pnpm 11.28.6, Biome 2.6.5, shfmt 3.14.1, Herdr app 0.1.15, and core 0.1.20.
 
 Linux amd64 cross-compilation also passed. Native execution was verified on macOS; the new remote executable has not been exercised on a connected host.
 
 Govulncheck reported standard-library advisory [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859), fixed in Go 1.27.4. The current Go 1.27.3 source does not import the affected package or call the vulnerable code. This is not a claim that the pinned toolchain has no known advisories.
 
 Disposable negative checks confirmed that Gitleaks rejects a synthetic secret and redacts its value. A local package with a postinstall script failed installation under the pnpm policy; its script did not run. These probes used temporary files and did not add repository dependencies.
+
+Plain `pnpm install` also rejected an outdated lockfile in a disposable project. A fresh unfrozen install followed by a clean plain install passed under the committed `frozenLockfile: true` policy.
+
+After the full validation run, two installer safeguards were added: an occupied mod directory must identify Worktree Launcher, and bundled destinations must be regular files. Final lint and all 95 Node tests passed. The new tests verify that unrelated directories, symlinks, external targets, settings, and keybindings are preserved on refusal.
 
 The GitHub workflows use the locally verified scripts. At `a9862df`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812231) passed Linux and macOS builds/tests, lint, and the security job. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812270) also passed. This includes current-space defaults, dry-run, the `--execute` flag, and supply-chain hardening.
 
@@ -56,6 +61,7 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | Standalone core context, Worktrunk, or the selected core is unavailable | Reject before branch or destination creation. Do not start a default core. | Go: missing-context, unavailable-core, and core-list-failure tests. |
 | UI runs without inherited core environment variables | Use its explicitly supplied running core ID. Reject mismatched IDs before branch creation or terminal RPCs. | Go: `TestAppCoreIdentityWithoutInheritedCoreEnvironment`, `TestAppCoreIdentityMismatchRefusesCreationAndOpening`. Client: core-ID propagation assertions. |
 | Worktrunk project hooks are configured | Skip those hooks during launcher creation. | Go: `TestWorktrunkProjectHooksAreSkipped`. |
+| A custom worktree root is configured on the target machine | Use the config file or environment override, including a root outside home. Existing checkouts keep their folders after root changes. Invalid settings, changed roots, and symlinked children stop creation. | Go: `TestConfiguredWorktreeRootCreatesOutsideHomeAndReusesItsCheckout`, `TestWorktreeRootConfigurationErrorsStopBeforeCreation`, and `TestWorktreeRootChangesAndSymlinkedChildrenRefuseCreation`. |
 | Checkout location needs inference or an override | Infer from the current repository or subdirectory. Honor `--checkout`. Reject an unspecified checkout outside Git. | CLI: checkout-inference test. |
 | UI opens from a local or remote space | Preselect its discovered project by Git identity and use that checkout's branch as the base. Leave the branch name empty. | [UI controls](../../tests/worktree-launcher-ui.test.mjs): active-space preselection test. Client: machine routing assertions. CLI: selection API assertions. |
 | Live terminal folder differs from the space's starting folder | Prefer the focused terminal's live checkout, then a terminal in the active tab, then the stored folder. Ignore unrelated spaces and inactive tabs. Capture context before asynchronous loading. | UI controls: live-terminal-checkout test on local and remote machines. Separate native sample checks a worktree tab inside its primary project's space. |
@@ -97,10 +103,10 @@ The model also tests duplicate-submit prevention, cancellation, changed checkout
 
 | Workflow or check | Configured in CI? | Scope |
 | --- | --- | --- |
-| [CI](../../.github/workflows/ci.yml): build and test | Yes, on Linux and macOS | Build the CLI, run Go tests with the race detector, then run every `tests/worktree-launcher-*.test.mjs` file. This includes both recovery test files. |
-| CI: lint | Yes, on Linux | Go formatting/vet, JavaScript syntax, ShellCheck, and actionlint. |
-| CI: security | Yes, on Linux | Run `scripts/security.sh`: Gitleaks scans the full checked-out commit history with redacted output; govulncheck checks the current Go source for the runner's platform. Scanner failures fail the job. |
-| [Packages](../../.github/workflows/packages.yml) | Yes, on Linux | Cross-compile four CLI targets, package the desktop mod, and upload archives and checksums. This does not run the native UI. |
+| [CI](../../.github/workflows/ci.yml): validate | Yes, on Linux and macOS | Run `scripts/validate.sh`: formatting, lint, secrets, dependency checks, Go race tests, every Node test, and the CLI build. This includes both recovery test files. |
+| CI: formatting and lint | Yes, on both runners | Biome for JavaScript/TypeScript and JSON, gofmt and Go vet, shfmt and ShellCheck, JavaScript syntax, and actionlint. |
+| CI: dependency and secret checks | Yes, on both runners | Gitleaks scans full committed history with redacted output. pnpm audit fails at moderate severity or higher; govulncheck checks reachable Go vulnerabilities for the runner's platform. Scanner failures fail validation. |
+| [Packages](../../.github/workflows/packages.yml) | Yes, on Linux | Cross-compile four CLI targets, package the mod, verify archive checksums and extracted installers, then upload artifacts. This does not run the native UI. |
 | Native module loading | No | Separate macOS command: `herdr-app check mods/worktree-launcher`. |
 | Real desktop keyboard, focus, theme, and mouse interaction | No | Manual checks and the isolated sample installation. Mocked control tests also run in CI, but do not establish native event routing. |
 | Connected-machine creation and session opening | No | Manual test with the Go CLI and Worktrunk installed on the target machine. CI checks routing through fixtures. |
@@ -122,7 +128,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 92 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 95 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 
@@ -139,6 +145,8 @@ A later regression check opened a worktree tab inside the primary project's spac
 A sample-only startup delay also confirmed the visible loading message and disabled form controls. Close stayed enabled. The sample completed all creation, fetch, reuse, and current-checkout scenes after loading finished. The loading-state image was visually inspected and retained outside the README.
 
 A separate native check opened the launcher from a linked-checkout subdirectory. It preselected the discovered project and `feature/context` base, with an empty new-branch name. This used the freshly built CLI and programmatic form-state assertions. Connected-machine defaults remain fixture-tested.
+
+A native check also configured a worktree root outside the sample home. Creation used that root, and fetch, existing-checkout reuse, fresh-tab opening, and current-checkout defaults passed. Sample installers bind their copied client to the freshly built executable so an older installed CLI cannot shadow it.
 
 The headless check installs a copied executable outside the source checkout. With Node and Bun absent from its runtime PATH, it creates sessions while the desktop is closed. The desktop later adopts those terminals.
 

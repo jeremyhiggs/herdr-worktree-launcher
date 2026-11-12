@@ -700,31 +700,76 @@ func choices(p Project) ([]Ref, error) {
 
 var slugPattern = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
+func worktreeRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	home, err = real(home)
+	if err != nil {
+		return "", err
+	}
+	root := os.Getenv("HERDR_WORKTREE_ROOT")
+	if root == "" {
+		configHome := os.Getenv("XDG_CONFIG_HOME")
+		if configHome == "" {
+			configHome = filepath.Join(home, ".config")
+		}
+		if !filepath.IsAbs(configHome) {
+			return "", errors.New("XDG_CONFIG_HOME must be an absolute directory.")
+		}
+		path := filepath.Join(configHome, "herdr-worktree-launcher", "config.json")
+		data, readErr := os.ReadFile(path)
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return "", fmt.Errorf("Cannot read Worktree Launcher config: %w", readErr)
+		}
+		if readErr == nil {
+			var config struct {
+				WorktreeRoot string `json:"worktree_root"`
+			}
+			if err = json.Unmarshal(data, &config); err != nil {
+				return "", fmt.Errorf("Invalid Worktree Launcher config: %w", err)
+			}
+			root = config.WorktreeRoot
+		}
+	}
+	if root == "" {
+		return filepath.Join(home, ".herdr", "worktrees"), nil
+	}
+	if !clean(root) || !filepath.IsAbs(root) {
+		return "", errors.New("worktree_root must be an absolute path to an existing directory.")
+	}
+	root, err = real(root)
+	if err != nil {
+		return "", fmt.Errorf("Cannot use worktree_root; create its directory first: %w", err)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() || filepath.Dir(root) == root {
+		return "", errors.New("worktree_root must be a directory other than the filesystem root.")
+	}
+	return root, nil
+}
+
 func destination(p Project, name string) (string, error) {
 	slug := strings.Trim(slugPattern.ReplaceAllString(name, "-"), "-")
 	if slug == "" || slug == "." || slug == ".." || !clean(p.Basename) || p.Basename == "." || p.Basename == ".." || strings.ContainsAny(p.Basename, "/\\") {
 		return "", errors.New("Branch has no safe destination slug.")
 	}
-	home, err := os.UserHomeDir()
+	root, err := worktreeRoot()
 	if err != nil {
 		return "", err
 	}
-	home, err = real(home)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".herdr", "worktrees", p.Basename, slug), nil
+	return filepath.Join(root, p.Basename, slug), nil
 }
 func validateDestination(path string) error {
-	home, err := os.UserHomeDir()
+	root, err := worktreeRoot()
 	if err != nil {
 		return err
 	}
-	home, err = real(home)
-	if err != nil {
-		return err
-	}
-	if !filepath.IsAbs(path) || !inside(path, home) || path == home {
+	if !filepath.IsAbs(path) || !inside(path, root) || path == root {
 		return errors.New("Unsafe destination.")
 	}
 	if _, err = os.Lstat(path); err == nil {
@@ -732,7 +777,7 @@ func validateDestination(path string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	for p := filepath.Dir(path); p != home; p = filepath.Dir(p) {
+	for p := filepath.Dir(path); ; p = filepath.Dir(p) {
 		info, e := os.Lstat(p)
 		if e == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
 			return fmt.Errorf("Destination ancestor is a symlink or unavailable: %s", p)
@@ -741,7 +786,7 @@ func validateDestination(path string) error {
 			return e
 		}
 		if p == filepath.Dir(p) {
-			return errors.New("Unsafe destination ancestry.")
+			break
 		}
 	}
 	return nil

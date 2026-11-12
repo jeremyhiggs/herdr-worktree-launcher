@@ -10,7 +10,7 @@ Install Git and zsh (already supplied on macOS), then install the pinned tools a
 
 ```sh
 mise install
-pnpm install --frozen-lockfile
+pnpm install
 ```
 
 ## Check changes
@@ -20,17 +20,21 @@ The GitHub workflows use the same scripts as local development:
 | Command | Checks or output |
 | --- | --- |
 | `./scripts/build-cli.sh` | Standalone executable in `dist/` |
-| `./scripts/lint.sh` | Go formatting and vet, JavaScript syntax, ShellCheck, and actionlint |
-| `./scripts/security.sh` | Gitleaks scans the checked-out commit's history; govulncheck checks the current Go source against the vulnerability database |
+| `./scripts/format.sh` | Format JavaScript, TypeScript, and JSON with Biome, Go with gofmt, and shell scripts with shfmt |
+| `./scripts/format.sh --check` | Reject formatting drift without changing files |
+| `./scripts/lint.sh` | Formatting checks, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
+| `./scripts/deps-check.sh` | pnpm audit at moderate severity or higher, then govulncheck for Go code |
+| `./scripts/security.sh` | Redacted Gitleaks scan of committed history, then dependency checks |
 | `./scripts/test.sh` | Go tests with the race detector, then all Node tests |
 | `./scripts/validate.sh` | Lint, security checks, tests, and the standalone CLI build |
 | `./scripts/package.sh` | Four CLI archives, a desktop mod archive, and SHA256SUMS in `dist/packages/` |
+| `./scripts/test-package.sh` | Verify archive checksums, install an extracted CLI, and run the packaged mod's install-script help |
 
 Packaging supports `--output DIRECTORY`. It includes only distribution files; personal configuration, recovery records, generated API files, and screenshot fixtures are excluded.
 
-CI runs lint on Linux and build/tests on Linux and macOS for pushes, pull requests, and manual runs. The Packages workflow cross-compiles macOS and Linux binaries for amd64 and arm64, then uploads the archives and checksums as a workflow artifact. It does not publish a GitHub release.
+CI runs `scripts/validate.sh` on Linux and macOS for pushes, pull requests, and manual runs. Both runners check formatting, lint, secrets, dependencies, tests, and the CLI build. The Packages workflow cross-compiles four CLI targets and uploads CLI and mod archives with checksums. It does not publish a GitHub release.
 
-The security job runs the same `scripts/security.sh` on Linux. Its checkout includes full history and does not retain credentials. CI also runs weekly. All workflow actions use full commit SHA pins. Gitleaks and govulncheck have exact versions in `mise.toml`.
+CI uses full-history checkouts without retained credentials. The weekly validation starts on Monday at 00:00 UTC. All workflow actions use full commit SHA pins. Biome, shfmt, ShellCheck, actionlint, Gitleaks, and govulncheck have exact versions in `mise.toml`.
 
 Missing tools and scanner errors fail validation. Gitleaks findings fail the scan, with matched secrets redacted. It scans committed history, including the code checked out by CI. It does not scan uncommitted files.
 
@@ -42,15 +46,17 @@ For complete local validation, run:
 ./scripts/validate.sh
 ```
 
-The equivalent pnpm shortcuts are `pnpm run security` and `pnpm run validate`.
+The pnpm shortcuts are `pnpm run format`, `pnpm run format:check`, `pnpm run lint`, `pnpm run deps:check`, and `pnpm run validate`.
+
+Use `pnpm test` for both Go race tests and Node tests. Use `pnpm run test:js` for only the Node suite. `pnpm run build`, `pnpm run package`, and `pnpm run test:package` call the corresponding scripts.
 
 ## pnpm policy
 
-The repository keeps pnpm 11.28.6 pinned. `pnpm-workspace.yaml` enforces engines and prefers frozen lockfiles. New package releases wait seven days before installation. Exotic transitive sources are blocked. Dependency build scripts are denied by default. Unapproved builds fail installation.
+The repository keeps pnpm 11.28.6 pinned. `pnpm-workspace.yaml` enforces engines and sets `frozenLockfile: true`. Plain `pnpm install` fails for a missing or outdated lockfile, locally and in CI. New package releases wait seven days before installation. Exotic transitive sources are blocked. Dependency build scripts are denied by default. Unapproved builds fail installation.
 
 If a dependency needs a build script, review its installed version. Add only an exact-version entry to `allowBuilds`. Release-age exceptions also require exact reviewed versions. Do not use broad exceptions or disable the policy to make installation pass.
 
-After policy or manifest changes, clear generated install state. Run an unfrozen install, then a clean frozen install. Preserve unrelated local files. CI always uses `pnpm install --frozen-lockfile`.
+After policy or manifest changes, clear generated install state. Run `pnpm install --no-frozen-lockfile`, then a clean `pnpm install`. The explicit override updates the lockfile when needed. Preserve unrelated local files. CI uses plain `pnpm install` and the committed frozen policy.
 
 There are no npm dependencies. `package.json` supplies ES-module settings and development commands for the JavaScript mod, tests, and installer. It is not required to run the Go executable.
 
@@ -64,7 +70,7 @@ Tests use disposable Git repositories, real Worktrunk, and core/app protocol fix
 herdr-app check mods/worktree-launcher
 ```
 
-That check validates initial loading, not the full interactive workflow. JavaScript linting checks syntax; no separate type checker is configured.
+That check validates initial loading, not the full interactive workflow. Biome checks JavaScript and TypeScript syntax and lint rules. There are no handwritten TypeScript sources or a separate type checker. Generated declaration files are excluded from formatting and linting.
 
 ## Open an isolated test app
 
@@ -102,6 +108,8 @@ pnpm run screenshots
 This command creates a separate app/core profile and real sample repositories. It uses a clean shell profile for screenshots. Your normal Herdr settings and projects stay separate.
 
 A sample-only driver selects fields in the real launcher. It captures new branches, remote fetch, existing branches, fresh tabs, available programs, and the resulting shell space.
+
+Both sample launchers bind their copied JSON client to the built executable in `dist/`. Shell startup files cannot redirect these checks to an older installed CLI.
 
 A fetch scene discovers a branch that exists only in the sample bare remote. It exports `fetch-remote.png` for the README.
 

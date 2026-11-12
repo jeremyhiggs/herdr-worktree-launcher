@@ -23,6 +23,8 @@ jobs:
       - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5
       - name: Build and package CLI and mod
         run: ./scripts/package.sh
+      - name: Verify checksums and extracted installers
+        run: ./scripts/test-package.sh
       - name: Upload packages and checksums
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
