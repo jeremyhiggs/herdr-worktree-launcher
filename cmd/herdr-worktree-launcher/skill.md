@@ -5,6 +5,40 @@ Use the standalone `herdr-worktree-launcher` binary locally. It requires only
 `HC_SOCKET` or `HC_SESSION` to an already running local core. The launcher never
 starts a core. Install Worktrunk if `wt` is missing.
 
+## Discover the running core
+
+Preserve inherited `HC_SOCKET` and `HC_SESSION` values. Verify their selected
+core with `hc server status --json` before launching.
+
+When neither variable is set, use `hc server status --json` without a selector
+for read-only discovery. If it resolves the intended running core, record its
+`core.id`. Test a candidate selector, for example:
+
+```sh
+HC_SESSION=default hc server status --json
+```
+
+Compare the returned `core.id` with the intended core's ID. When the current
+terminal address is available, also verify that `hc get <terminal> --json`
+resolves that terminal using the same selector. Do not choose `default` blindly.
+For a custom session name or socket path, verify it the same way. If no core is
+running, stop; never start or restart a core during discovery. Ask the user only
+if the intended core remains ambiguous.
+
+`core.id` is a comparison identity, not a valid `HC_SESSION` value.
+`HC_SESSION` is a session name; `HC_SOCKET` is a socket path. Do not hardcode
+device-specific paths or IDs. Once verified, prefix each standalone invocation
+with the selector; a permanent global export is unnecessary. For example, after
+verifying `default`:
+
+```sh
+HC_SESSION=default herdr-worktree-launcher open fix/example --checkout /code/project --execute codex --json
+```
+
+`--dry-run` reports `core_checked:false` and does not verify runtime core context.
+
+## Launch examples
+
 ```sh
 herdr-worktree-launcher new feature/example --checkout /code/project --base main --json
 herdr-worktree-launcher open origin/feature/example --checkout /code/project --fetch origin --execute codex --json
