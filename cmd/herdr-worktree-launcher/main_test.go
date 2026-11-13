@@ -260,7 +260,7 @@ func TestInitialPromptArguments(t *testing.T) {
 			want = append(want, "--no-daemon")
 		}
 		if key == "opencode" {
-			want = append(want, "--prompt", prompt)
+			want = append(want, "--prompt="+prompt)
 		} else {
 			want = append(want, "--", prompt)
 		}

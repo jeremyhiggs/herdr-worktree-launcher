@@ -1135,7 +1135,7 @@ func launchProgram(launch Launch) (string, []string, error) {
 			if launch.Prompt != "" {
 				prompt := launch.Prompt
 				if key == "opencode" {
-					resolved = append(resolved, "--prompt", prompt)
+					resolved = append(resolved, "--prompt="+prompt)
 				} else {
 					// Pi treats @arguments as files even after --. Keep this a message.
 					if key == "pi" && strings.HasPrefix(prompt, "@") {
