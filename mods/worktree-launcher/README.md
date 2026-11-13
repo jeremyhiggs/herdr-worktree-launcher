@@ -71,6 +71,8 @@ An existing remote branch creates a local branch that tracks that remote. A new 
 
 **Open with** defaults to **Shell**. Claude Code, Pi, OpenCode, and Codex appear when Herdr detects them on the selected machine. The UI passes Herdr launch settings to the CLI, which checks the executable on the target machine.
 
+When you select an agent, **Initial prompt (optional)** appears below **Open with**. Enter the first task for the agent, or leave it blank. Shell has no prompt field.
+
 The CLI reuses a space for the exact checkout, or assigns a new space to its terminal. Herdr's standard sidebar groups worktrees beneath their project. No `spaces-grouped` mod is required.
 
 ## Controls

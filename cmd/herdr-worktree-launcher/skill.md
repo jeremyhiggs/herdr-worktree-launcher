@@ -42,6 +42,7 @@ HC_SESSION=default herdr-worktree-launcher open fix/example --checkout /code/pro
 ```sh
 herdr-worktree-launcher new feature/example --checkout /code/project --base main --json
 herdr-worktree-launcher open origin/feature/example --checkout /code/project --fetch origin --execute codex --json
+herdr-worktree-launcher new fix/example --checkout /code/project --execute codex --prompt 'Fix the failing tests.' --json
 herdr-worktree-launcher api --request '{"operation":"context"}'
 herdr-worktree-launcher api --request '{"operation":"project","path":"/code/project"}'
 ```
@@ -54,6 +55,13 @@ An explicit `--base` overrides that branch. A detached checkout requires `--base
 origin's repository name, root package.json name, pyproject project/Poetry name,
 then folder name. New paths use `~/.herdr/worktrees/<repository>/<branch-slug>`.
 Existing branches reuse their actual checkout path.
+
+Use `--prompt TEXT` with `--execute claude|pi|opencode|codex` to send an initial
+message and keep the agent interactive. It is rejected for Shell. The API uses
+`request.launch.prompt`; keep `launch.argv` as the agent command and its normal
+options, without appending the prompt yourself. Prompt text is passed as an
+argument, never evaluated as shell code. Dry-run includes it in the planned argv.
+The context response advertises `initial_prompt:true` when this feature is supported.
 
 Destination configuration is local to the target machine. Read `worktree_root`
 from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-worktree-launcher/config.json`.
@@ -89,6 +97,8 @@ Errors use `{error:{kind,message,hint}}` with nonzero exit status.
 
 Selection returns `{project,ref}` for a checkout or subdirectory. The project identifies the primary checkout;
 `ref` identifies the requested checkout's branch, or an empty string for detached HEAD.
+Pass `config.project_root` with selection to scope and label the current project
+without scanning other repositories; discovery exclusions still apply.
 
 The context response includes `core_id` when `hc server status` proves that a
 core is already running. Desktop API clients pass this value as `request.core_id`

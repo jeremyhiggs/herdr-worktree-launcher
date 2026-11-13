@@ -8,6 +8,7 @@ Usage: herdr-worktree-launcher new|open BRANCH [--checkout PATH] [options]
   --base REF        Base branch for new (default: selected checkout's branch)
   --fetch REMOTE    Fetch one configured remote before branch selection and wt
   --execute NAME    shell, claude, pi, opencode or codex (default: shell)
+  --prompt TEXT     Initial message for the selected agent (requires --execute)
   --dry-run         Validate and print the plan without changing Git or sessions
   --json            Print session information as JSON
   --attach          Attach foreground stdin to the new session (without --json)

@@ -6,11 +6,12 @@ import { createJournalStore } from '../mods/worktree-launcher/journal.js';
 const openCheckout = openCheckoutWithGit;
 
 const deferred = () => {
-  let resolve;
-  const promise = new Promise((r) => {
+  let resolve, reject;
+  const promise = new Promise((r, fail) => {
     resolve = r;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 const noTimeout = () => ({ promise: new Promise(() => {}), cancel: () => {} });
 const a = { id: 'A', path: '/projects/A', label: 'A', basename: 'A' };
@@ -84,6 +85,62 @@ async function fill(model) {
   model.setName('feature');
   model.selectRef(ref);
 }
+
+test('deferred project scans are cached, preserve editing, report errors locally, and ignore stale machine results', async () => {
+  for (const outcome of ['success', 'failure', 'machine', 'close']) {
+    const gate = deferred();
+    let scans = 0;
+    const f = setup({
+      git: {
+        discover: async () => {
+          scans++;
+          return gate.promise;
+        },
+      },
+    });
+    await f.model.refresh(() => {}, true);
+    assert.equal(scans, 0);
+    await f.model.selectProject(a);
+    f.model.selectRef(ref);
+    f.model.setName('draft');
+    f.model.setPrompt('Keep this task.');
+    const pending = f.model.loadProjects();
+    await f.model.loadProjects();
+    assert.equal(scans, 1);
+    assert.equal(f.model.canCreate, true);
+    if (outcome === 'failure') {
+      // A discovery failure must not affect the selected repository.
+      gate.reject(new Error('scan failed'));
+      await pending;
+      assert.equal(f.model.projectsError, 'scan failed');
+      assert.equal(f.model.error, '');
+      f.git.discover = async () => [a, b];
+      await f.model.loadProjects();
+      assert.deepEqual(f.model.projects, [a, b]);
+      assert.equal(f.model.projectsError, '');
+    } else {
+      if (outcome === 'machine') {
+        f.model.connect = async (machine) => ({ ...f.git, machine, discover: async () => [b] });
+        await f.model.selectMachine('devbox');
+      } else if (outcome === 'close') f.model.close();
+      gate.resolve([a]);
+      await pending;
+    }
+    if (outcome === 'machine') assert.deepEqual(f.model.projects, [b]);
+    else if (outcome === 'close') assert.deepEqual(f.model.projects, []);
+    else {
+      assert.equal(f.model.project, a);
+      assert.equal(f.model.ref, ref);
+      assert.equal(f.model.name, 'draft');
+      assert.equal(f.model.prompt, 'Keep this task.');
+      assert.equal(f.model.canCreate, true);
+      if (outcome === 'success') {
+        await f.model.loadProjects();
+        assert.equal(scans, 1);
+      }
+    }
+  }
+});
 
 test('recovery guards only the requested repository branch or destination, without blocking the form', async () => {
   for (const [label, project, name, path, conflict] of [
@@ -238,9 +295,11 @@ test('the selected agent is recorded before creation and preserved for open-only
   });
   await fill(f.model);
   f.model.selectLaunch(f.model.launches.find((item) => item.key === 'codex'));
+  f.model.setPrompt('Review the checkout and explain the tests.');
   const create = f.git.create;
   f.git.create = async (request) => {
     assert.equal(f.saved.launch.key, 'codex');
+    assert.equal(f.saved.launch.prompt, 'Review the checkout and explain the tests.');
     return create(request);
   };
   let opened;
@@ -254,6 +313,7 @@ test('the selected agent is recorded before creation and preserved for open-only
   assert.equal(f.model.phase, 'recover');
   await f.model.openCreated(async (request) => {
     assert.equal(request.launch.key, 'codex');
+    assert.equal(request.launch.prompt, 'Review the checkout and explain the tests.');
   });
   assert.equal(f.model.phase, 'complete');
   assert.equal(f.mutations, 1);
@@ -263,12 +323,14 @@ test('an in-window opening retry can switch to Shell without another Git mutatio
   const f = setup({ listAgents: async () => [{ key: 'codex', name: 'Codex', installed: true, run: ['codex'] }] });
   await fill(f.model);
   f.model.selectLaunch(f.model.launches[1]);
+  f.model.setPrompt('Review this project.');
   await f.model.submit(async () => {
     throw new Error('opening failed');
   });
   f.model.selectLaunch(f.model.launches[0]);
   await f.model.openCreated(async (request) => {
     assert.equal(request.launch.key, 'shell');
+    assert.equal(request.launch.prompt, '');
     assert.equal(f.saved, null);
   });
   assert.equal(f.mutations, 1);
@@ -863,7 +925,7 @@ test('destination previews discard stale responses', async () => {
 });
 
 test('known pre-creation failures clear recovery while unknown creation outcomes remain guarded', async () => {
-  for (const kind of ['context_missing', 'dependency_missing', 'core_unavailable', undefined]) {
+  for (const kind of ['context_missing', 'dependency_missing', 'core_unavailable', 'launch_invalid', undefined]) {
     const f = setup({
       git: {
         create: async () => {

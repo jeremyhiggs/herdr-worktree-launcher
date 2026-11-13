@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -246,6 +247,43 @@ func TestMissingContextAndWorktrunkRefuseBeforeCreation(t *testing.T) {
 	}
 }
 
+func TestInitialPromptArguments(t *testing.T) {
+	f := setup(t)
+	prompt := "--review 'quoted' \"text\"; $(touch nope)\nnext line"
+	for _, key := range []string{"claude", "pi", "opencode", "codex"} {
+		_, argv, err := launchProgram(Launch{Key: key, Argv: []string{"git", "--fixture"}, Prompt: prompt})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{filepath.Join(f.bin, "git"), "--fixture"}
+		if key == "codex" {
+			want = append(want, "--no-daemon")
+		}
+		if key == "opencode" {
+			want = append(want, "--prompt", prompt)
+		} else {
+			want = append(want, "--", prompt)
+		}
+		if !slices.Equal(argv, want) {
+			t.Fatalf("%s: got %q, want %q", key, argv, want)
+		}
+	}
+	_, argv, err := launchProgram(Launch{Key: "pi", Argv: []string{"git"}, Prompt: "@not-a-file"})
+	if err != nil || argv[len(argv)-1] != " @not-a-file" {
+		t.Fatalf("Pi must receive a message instead of an @file argument: %q %v", argv, err)
+	}
+	for _, launch := range []Launch{{Prompt: "task"}, {Key: "shell", Prompt: "task"}, {Key: "codex", Prompt: "bad\x00prompt"}} {
+		r := f.prepare(t, "new", "refs/heads/main", "invalid-prompt")
+		r.Launch = launch
+		if _, err := create(r); err == nil {
+			t.Fatalf("invalid prompt accepted: %+v", launch)
+		}
+		if f.git(t, "branch", "--list", r.Name) != "" {
+			t.Fatal("invalid prompt created a branch")
+		}
+	}
+}
+
 func TestAppCoreIdentityWithoutInheritedCoreEnvironment(t *testing.T) {
 	f := setup(t)
 	r := f.prepare(t, "new", "refs/heads/main", "from-app")
@@ -404,7 +442,7 @@ func TestWorktreeOpeningEnsuresCanonicalShellSpaceWithoutDuplicates(t *testing.T
 		t.Fatalf("create: %+v %v", result, err)
 	}
 	r.Attempt = "target-attempt"
-	r.Launch = Launch{Key: "codex", Argv: []string{"git"}}
+	r.Launch = Launch{Key: "codex", Argv: []string{"git"}, Prompt: "Review the target checkout."}
 	first, err := openCheckout(r)
 	if err != nil {
 		t.Fatal(err)
@@ -426,7 +464,7 @@ func TestWorktreeOpeningEnsuresCanonicalShellSpaceWithoutDuplicates(t *testing.T
 			runs = append(runs, call["params"].(map[string]any))
 		}
 	}
-	if len(runs) != 2 || len(runs[0]["argv"].([]any)) != 0 || len(runs[1]["argv"].([]any)) != 2 {
+	if len(runs) != 2 || len(runs[0]["argv"].([]any)) != 0 || len(runs[1]["argv"].([]any)) != 4 || runs[1]["argv"].([]any)[3] != r.Launch.Prompt {
 		t.Fatalf("selected program must run only in target: %+v", runs)
 	}
 	for _, params := range runs {
@@ -438,10 +476,10 @@ func TestWorktreeOpeningEnsuresCanonicalShellSpaceWithoutDuplicates(t *testing.T
 	if err != nil || retry != first || len(f.core(t).Terminals) != 2 {
 		t.Fatalf("retry duplicates: %+v %v", retry, err)
 	}
-	r.Attempt = "fresh-target-attempt"
+	r.Launch.Prompt = "Review a different task."
 	second, err := openCheckout(r)
 	if err != nil || second.Terminal == first.Terminal || len(f.core(t).Terminals) != 3 {
-		t.Fatalf("fresh target duplicated canonical: %+v %v", second, err)
+		t.Fatalf("changed prompt reused the old terminal or duplicated canonical: %+v %v", second, err)
 	}
 	state = f.core(t)
 	state.Terminals[0].State = "finished"
@@ -465,6 +503,9 @@ func TestAPIShapesProgramsAndSafePaths(t *testing.T) {
 	if !strings.Contains(string(raw), `"protocol":1`) || !strings.Contains(string(raw), `"machine":null`) {
 		t.Fatal(string(raw))
 	}
+	if value.(map[string]any)["initial_prompt"] != true {
+		t.Fatal("context must advertise initial prompt support")
+	}
 	refs, err := choices(f.p)
 	if err != nil || len(refs) != 1 || refs[0].Checkout == nil {
 		t.Fatalf("refs %+v %v", refs, err)
@@ -485,6 +526,36 @@ func TestAPIShapesProgramsAndSafePaths(t *testing.T) {
 	ps := programs([]Program{{Key: "codex", Name: "Custom", Run: []string{"git", "custom"}}})
 	if ps[4].Name != "Custom" || !ps[4].Installed || ps[4].Run[1] != "custom" {
 		t.Fatal(ps)
+	}
+}
+
+func TestSelectionValidatesOnlyTheCurrentProjectAgainstItsRoot(t *testing.T) {
+	f := setup(t)
+	in := input{Operation: "selection", Path: f.repo}
+	in.Config.ProjectRoot = filepath.Dir(f.repo)
+	value, err := api(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := value.(map[string]any)
+	p := selected["project"].(Project)
+	if p.ID != f.p.ID || p.Root != in.Config.ProjectRoot || p.Explicit || p.Label != filepath.Base(f.repo) || selected["ref"] != "refs/heads/main" {
+		t.Fatalf("selection: %+v", selected)
+	}
+	for _, root := range []string{f.home, f.repo} {
+		in.Config.ProjectRoot = root
+		if _, err = api(in); err == nil {
+			t.Fatalf("accepted project outside discovery scope %q", root)
+		}
+	}
+	blocked := filepath.Join(filepath.Dir(f.repo), "node_modules", "excluded")
+	if _, err = command("", "git", "init", "-b", "main", blocked); err != nil {
+		t.Fatal(err)
+	}
+	in.Path = blocked
+	in.Config.ProjectRoot = filepath.Dir(f.repo)
+	if _, err = api(in); err == nil || !strings.Contains(err.Error(), "excluded") {
+		t.Fatalf("accepted excluded current project: %v", err)
 	}
 }
 

@@ -183,6 +183,37 @@ test('CLI detects a local agent and preserves a created checkout when terminal s
   assert.match(await f.git('worktree', 'list', '--porcelain'), /refs\/heads\/preserved/);
 });
 
+test('CLI passes an initial prompt literally in plans and sessions, and rejects prompts for Shell', async (t) => {
+  const f = await fixture(t);
+  await symlink(join(f.bin, 'git'), join(f.bin, 'codex'));
+  const prompt = '--help "quoted"; $(touch never)\nReview tests';
+  for (const action of ['new', 'open']) {
+    const args = [
+      action,
+      action === 'new' ? 'prompted' : 'main',
+      '--checkout',
+      f.project,
+      '--execute=codex',
+      '--prompt',
+      prompt,
+      '--json',
+    ];
+    const plan = JSON.parse((await f.run([...args, '--dry-run'])).stdout);
+    assert.deepEqual(plan.argv.slice(1), ['--no-daemon', '--', prompt]);
+    const opened = JSON.parse((await f.run(args)).stdout);
+    const state = JSON.parse(await readFile(f.state, 'utf8'));
+    const terminal = state.terminals.find((item) => item.address === opened.terminal);
+    assert.deepEqual(terminal.argv.slice(1), ['--no-daemon', '--', prompt]);
+  }
+  for (const execute of [[], ['--execute=shell']]) {
+    await assert.rejects(
+      f.run(['new', 'shell-prompt', '--checkout', f.project, ...execute, '--prompt=task', '--json']),
+      /prompt.*agent/i,
+    );
+    assert.equal(await f.git('branch', '--list', 'shell-prompt'), '');
+  }
+});
+
 test('CLI installer produces an executable usable without the source checkout', async (t) => {
   const f = await fixture(t),
     prefix = join(f.dir, 'install');
@@ -466,8 +497,20 @@ test('CLI infers the current checkout, accepts overrides, and ignores the old en
   const linkedNested = join(created.path, 'src');
   await mkdir(linkedNested);
   const selection = JSON.parse(
-    (await run(['api', '--request', JSON.stringify({ operation: 'selection', path: linkedNested })], f.elsewhere))
-      .stdout,
+    (
+      await run(
+        [
+          'api',
+          '--request',
+          JSON.stringify({
+            operation: 'selection',
+            path: linkedNested,
+            config: { project_root: join(f.dir, 'projects') },
+          }),
+        ],
+        f.elsewhere,
+      )
+    ).stdout,
   );
   assert.equal(selection.project.path, f.project);
   assert.equal(selection.ref, 'refs/heads/inferred');

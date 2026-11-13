@@ -24,10 +24,11 @@ test('UI routes JSON arguments to the selected machine and retains machine prove
   };
   const api = await connectCLI(exec, 'devbox');
   const [selected] = await api.discover({ project_root: '/code' });
-  const suggestion = await api.selection('/code/sample/src');
+  const suggestion = await api.selection('/code/sample/src', { project_root: '/code' });
   assert.equal(suggestion.project.machine, 'devbox');
   assert.equal(suggestion.ref, 'refs/heads/feature/current');
   assert.equal(calls.find((c) => c.value.operation === 'selection').value.path, '/code/sample/src');
+  assert.deepEqual(calls.find((c) => c.value.operation === 'selection').value.config, { project_root: '/code' });
   const prepared = await api.prepare({ project: selected, name: "feature/quote's", action: 'new' });
   const result = await api.create({ ...prepared, core_id: 'stale-core' });
   await api.open({ ...result.request, core_id: 'stale-core' });
@@ -63,6 +64,35 @@ test('fetch and creation allow long operations within the native execution limit
       assert(options.timeout > 30000, `${operation} must outlast the native default`);
       assert(options.timeout <= 600000, `${operation} must fit the native cap`);
     } else assert.equal(options.timeout, undefined);
+  }
+});
+
+test('UI passes prompts to capable local and remote CLIs and refuses older CLIs before creation', async () => {
+  for (const machine of [null, 'devbox']) {
+    for (const supported of [true, false]) {
+      const calls = [];
+      const api = await connectCLI(async (_command, args) => {
+        const call = JSON.parse(args[2]);
+        calls.push(call);
+        return {
+          code: 0,
+          stdout: JSON.stringify(
+            call.operation === 'context'
+              ? { protocol: 1, initial_prompt: supported }
+              : { kind: 'created', request: call.request },
+          ),
+        };
+      }, machine);
+      const request = { project: {}, launch: { key: 'codex', prompt: 'Review "quotes"\nand tests.' } };
+      if (supported) {
+        const result = await api.create(request);
+        assert.equal(result.request.launch.prompt, request.launch.prompt);
+        assert.equal(calls[1].request.launch.prompt, request.launch.prompt);
+      } else {
+        await assert.rejects(api.create(request), { kind: 'launch_invalid' });
+        assert.equal(calls.length, 1, 'No create call may silently drop the prompt');
+      }
+    }
   }
 });
 

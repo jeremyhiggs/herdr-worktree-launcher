@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -127,9 +128,10 @@ type Ref struct {
 	Reason   string  `json:"reason"`
 }
 type Launch struct {
-	Key   string   `json:"key"`
-	Label string   `json:"label"`
-	Argv  []string `json:"argv"`
+	Key    string   `json:"key"`
+	Label  string   `json:"label"`
+	Argv   []string `json:"argv"`
+	Prompt string   `json:"prompt,omitempty"`
 }
 type Request struct {
 	CoreID   string  `json:"core_id,omitempty"`
@@ -989,6 +991,9 @@ func create(r Request) (Result, error) {
 	if err := preflight(r.CoreID); err != nil {
 		return Result{}, err
 	}
+	if _, _, err := launchProgram(r.Launch); err != nil {
+		return Result{}, fail("launch_invalid", err.Error(), "Choose an available agent and a valid initial prompt. No worktree operation was started.")
+	}
 	if _, err := core("terminal.list", map[string]any{}); err != nil {
 		return Result{}, fail("core_unavailable", err.Error(), "No worktree operation was started.")
 	}
@@ -1084,11 +1089,17 @@ func programs(overrides []Program) []Program {
 	return stock
 }
 func launchProgram(launch Launch) (string, []string, error) {
+	if strings.ContainsRune(launch.Prompt, 0) {
+		return "", nil, errors.New("Initial prompt cannot contain a NUL character.")
+	}
 	key := launch.Key
 	if key == "" {
 		key = "shell"
 	}
 	if key == "shell" {
+		if launch.Prompt != "" {
+			return "", nil, errors.New("An initial prompt requires an agent; Shell does not accept prompts.")
+		}
 		return key, []string{}, nil
 	}
 	for _, p := range programs(nil) {
@@ -1119,6 +1130,18 @@ func launchProgram(launch Launch) (string, []string, error) {
 				}
 				if !found {
 					resolved = append(resolved, "--no-daemon")
+				}
+			}
+			if launch.Prompt != "" {
+				prompt := launch.Prompt
+				if key == "opencode" {
+					resolved = append(resolved, "--prompt", prompt)
+				} else {
+					// Pi treats @arguments as files even after --. Keep this a message.
+					if key == "pi" && strings.HasPrefix(prompt, "@") {
+						prompt = " " + prompt
+					}
+					resolved = append(resolved, "--", prompt)
 				}
 			}
 			return key, resolved, nil
@@ -1214,6 +1237,11 @@ func openCheckout(r Request) (OpenResult, error) {
 	if err != nil {
 		return OpenResult{}, err
 	}
+	promptID := ""
+	if r.Launch.Prompt != "" {
+		sum := sha256.Sum256([]byte(r.Launch.Prompt))
+		promptID = hex.EncodeToString(sum[:])
+	}
 	data, err := core("terminal.list", map[string]any{})
 	if err != nil {
 		return OpenResult{}, err
@@ -1268,7 +1296,7 @@ func openCheckout(r Request) (OpenResult, error) {
 		if id.Top != r.Path {
 			continue
 		}
-		if r.Attempt != "" && t.Labels["herdr-worktree-launcher.attempt"] == r.Attempt && t.Labels["herdr-worktree-launcher.program"] == key {
+		if r.Attempt != "" && t.Labels["herdr-worktree-launcher.attempt"] == r.Attempt && t.Labels["herdr-worktree-launcher.program"] == key && t.Labels["herdr-worktree-launcher.prompt"] == promptID {
 			if t.Labels["herdr.space"] != "" && t.Labels["herdr.tab"] != "" {
 				retry = &OpenResult{r.Path, t.Address, t.Labels["herdr.space"], t.Labels["herdr.tab"], key}
 			}
@@ -1290,6 +1318,9 @@ func openCheckout(r Request) (OpenResult, error) {
 		space = uuid()
 	}
 	labels := map[string]string{"herdr.space": space, "herdr.tab": tab, "herdr-worktree-launcher.program": key}
+	if promptID != "" {
+		labels["herdr-worktree-launcher.prompt"] = promptID
+	}
 	if r.Attempt != "" {
 		labels["herdr-worktree-launcher.attempt"] = r.Attempt
 	}
@@ -1334,7 +1365,7 @@ func api(in input) (any, error) {
 	case "context":
 		home, err := os.UserHomeDir()
 		coreID, _ := runningCoreID()
-		return map[string]any{"userHome": home, "protocol": 1, "machine": nil, "core_id": coreID}, err
+		return map[string]any{"userHome": home, "protocol": 1, "machine": nil, "core_id": coreID, "initial_prompt": true}, err
 	case "validateRoot":
 		return validateRoot(in.Config.ProjectRoot)
 	case "directories":
@@ -1364,9 +1395,25 @@ func api(in input) (any, error) {
 	case "project":
 		return project(in.Path, "")
 	case "selection":
-		p, err := project(in.Path, "")
+		root := in.Config.ProjectRoot
+		if root != "" {
+			var err error
+			root, err = validateRoot(root)
+			if err != nil {
+				return nil, err
+			}
+		}
+		p, err := project(in.Path, root)
 		if err != nil {
 			return nil, err
+		}
+		if root != "" {
+			if p.Path == root {
+				return nil, errors.New("Select a project inside the configured project root.")
+			}
+			if err = validateProject(p); err != nil {
+				return nil, err
+			}
 		}
 		ref, err := git(in.Path, "symbolic-ref", "--quiet", "HEAD")
 		var exit *exec.ExitError
@@ -1455,7 +1502,7 @@ func run(args []string) (any, bool, error) {
 					return nil, false, fmt.Errorf("Option --%s takes no value", key)
 				}
 				flags[key] = true
-			case "checkout", "base", "execute", "request", "fetch":
+			case "checkout", "base", "execute", "request", "fetch", "prompt":
 				if !has {
 					i++
 					if i >= len(args) {
@@ -1489,6 +1536,9 @@ func run(args []string) (any, bool, error) {
 	}
 	isAPI := len(positionals) > 0 && positionals[0] == "api"
 	if isAPI {
+		if _, ok := values["prompt"]; ok {
+			return nil, true, errors.New("For API requests, set request.launch.prompt instead of --prompt.")
+		}
 		if flags["dry-run"] {
 			return nil, true, errors.New("--dry-run applies only to new and open commands, not API operations.")
 		}
@@ -1510,6 +1560,9 @@ func run(args []string) (any, bool, error) {
 		return nil, jsonOutput, errors.New("--attach requires an interactive terminal without --json.")
 	}
 	interactive := len(positionals) == 0 && isTerminal(os.Stdin) && !jsonOutput
+	if _, supplied := values["prompt"]; supplied && (values["execute"] == "shell" || values["execute"] == "" && !interactive) {
+		return nil, jsonOutput, errors.New("--prompt requires an agent selected with --execute.")
+	}
 	if len(positionals) > 2 || len(positionals) == 0 && !interactive {
 		return nil, jsonOutput, errors.New(help)
 	}
@@ -1633,7 +1686,8 @@ func run(args []string) (any, bool, error) {
 			}
 		}
 	}
-	_, argv, err := launchProgram(Launch{Key: key})
+	launch := Launch{Key: key, Label: key, Prompt: values["prompt"]}
+	_, argv, err := launchProgram(launch)
 	if err != nil {
 		return nil, jsonOutput, err
 	}
@@ -1659,7 +1713,7 @@ func run(args []string) (any, bool, error) {
 	if err != nil {
 		return nil, jsonOutput, err
 	}
-	r.Launch = Launch{Key: key, Label: key, Argv: argv}
+	r.Launch = launch
 	if flags["dry-run"] {
 		id, err := identity(checkout)
 		if err != nil {

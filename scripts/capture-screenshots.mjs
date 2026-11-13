@@ -136,6 +136,7 @@ try {
     ['fetch', 'fetch-remote.png'],
     ['existing', 'existing-branch.png'],
     ['agents', 'open-with.png'],
+    ['prompt', 'initial-prompt.png'],
     ['reuse', null],
     ['reuse-again', 'fresh-tab.png'],
     ['create', 'worktree-opened.png'],

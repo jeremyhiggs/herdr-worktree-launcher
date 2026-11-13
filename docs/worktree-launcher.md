@@ -117,6 +117,8 @@ All Git commands stay on the selected machine. A disconnected machine never fall
 
 **Open with** uses Herdr's detected programs and their launch settings. Only available Claude Code, Pi, OpenCode, and Codex programs appear. **Shell** remains available if detection fails.
 
+Selecting an agent shows **Initial prompt (optional)**. The CLI equivalent is `--execute codex --prompt 'Describe the task here.'`; API callers set `request.launch.prompt`. The message starts the interactive agent in the target checkout. Shell rejects initial prompts.
+
 If an agent is missing from the menu, check that Herdr can detect it on the selected machine. After installation or changes to Herdr's programs, select **Refresh**. Herdr can cache availability briefly.
 
 The launcher creates or reuses the primary project space before opening the worktree. Herdr's standard Spaces sidebar supplies grouping. The launcher needs no `spaces-grouped` mod.

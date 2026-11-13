@@ -108,7 +108,9 @@ function keyboardView(phase = 'editing', spaces = [], { panes = [], focused = nu
   };
 }
 
-test('startup stays disabled through discovery, checkout lookup and branches, with a visible loading message', async () => {
+test('startup resolves the current checkout without discovery; opening the project picker scans once without blocking editing', {
+  timeout: 2000,
+}, async () => {
   const gate = () => {
     let resolve;
     const promise = new Promise((done) => {
@@ -124,10 +126,14 @@ test('startup stays disabled through discovery, checkout lookup and branches, wi
   const { view, initialWork, cx, disabled, labels } = keyboardView('loading', [{ active: true, folder: '/checkout' }]);
   const project = { id: 'repo', path: '/projects/app', label: 'app' },
     ref = { ref: 'refs/heads/main', label: 'main' };
+  let scans = 0;
   view.model.config = async () => ({ project_root: '/projects' });
   view.model.listAgents = async () => [];
   view.model.connect = async () => ({
-    discover: () => discovery.promise,
+    discover: () => {
+      scans++;
+      return discovery.promise;
+    },
     selection: () => {
       selected.resolve();
       return selection.promise;
@@ -172,7 +178,6 @@ test('startup stays disabled through discovery, checkout lookup and branches, wi
     assert.equal(actions, 0, 'Clicks and Enter cannot start work during initialization');
   };
   assertLoading();
-  discovery.resolve([project]);
   await selected.promise;
   assertLoading();
   selection.resolve({ project, ref: ref.ref });
@@ -189,6 +194,21 @@ test('startup stays disabled through discovery, checkout lookup and branches, wi
     assert.equal(disabled.get(view.inputs[field]), false, field);
   assert.equal(disabled.get('create'), false);
   assert(!labels.some((text) => /Loading/.test(text)));
+  assert.equal(scans, 0, 'The current checkout must not wait for a project-root scan');
+  let pendingScan;
+  view.task = (_cx, work) => {
+    pendingScan = work(null, () => {});
+  };
+  view.inputs.project.handlers.focus({}, cx);
+  view.inputs.project.handlers.change({}, cx);
+  assert.equal(scans, 1, 'Focus and typing share the scan');
+  assert.equal(view.emptyMessage('project'), 'Loading projects…');
+  assert.equal(view.model.canCreate, true, 'A project scan cannot block the current checkout');
+  discovery.resolve([project]);
+  await pendingScan;
+  assert.deepEqual(view.model.projects, [project]);
+  assert.equal(view.model.ref, ref);
+  assert.equal(view.model.name, 'feature');
 });
 
 test('opening focuses and activates the launcher before slow project loading, so Escape can close it', async () => {
@@ -244,10 +264,12 @@ test('opening preselects the active space repository and checkout branch on its 
     view.model.connect = async (on) => {
       assert.equal(on, machine);
       return {
-        discover: async () => [project],
+        discover: async () => {
+          throw new Error('Startup must not scan all projects');
+        },
         selection: async (path) => {
           calls.push(path);
-          return { project: { ...project, label: 'different canonical label' }, ref: base.ref };
+          return { project, ref: base.ref };
         },
         choices: async () => [base],
         remotes: async () => [],
@@ -255,7 +277,7 @@ test('opening preselects the active space repository and checkout branch on its 
     };
     for (const field of ['project', 'ref', 'name']) view.inputs[field].focus = () => focused.push(field);
     await initialWork(null, () => {});
-    assert.equal(view.model.project, project, 'Match canonical repository identity, not folder or label');
+    assert.equal(view.model.project, project, 'Use the resolved current repository directly');
     assert.equal(view.model.ref, base);
     assert.equal(view.inputs.project.value(), 'team/app');
     assert.equal(view.inputs.ref.value(), base.label);
@@ -340,7 +362,8 @@ test('unavailable, excluded, and detached active checkouts leave manual choices 
       remotes: async () => [],
       selection: async () => {
         if (scenario === 'unavailable') throw new Error('Not a Git repository');
-        return { project: scenario === 'excluded' ? { id: 'another-repo' } : project, ref: '' };
+        if (scenario === 'excluded') throw new Error('Current project is excluded');
+        return { project, ref: '' };
       },
     });
     await initialWork(null, () => {});
@@ -505,6 +528,43 @@ test('Enter from a completed branch name or the form invokes Create only while e
   assert.equal(creates, 2);
 });
 
+test('the initial prompt is agent-only, editable, keyboard reachable, and submits without opening a picker', () => {
+  const { view, cx, disabled, labels } = keyboardView();
+  assert(!labels.includes('Initial prompt (optional)'));
+  const agent = { key: 'codex', label: 'Codex', argv: ['codex'] };
+  view.model.launches.push(agent);
+  view.model.selectLaunch(agent);
+  labels.length = 0;
+  view.render();
+  assert(labels.includes('Initial prompt (optional)'));
+  assert.equal(disabled.get(view.inputs.prompt), false);
+  view.inputs.prompt.set_value('Explain the checkout.');
+  view.inputs.prompt.handlers.change({}, cx);
+  assert.equal(view.model.prompt, 'Explain the checkout.');
+  view.inputs.prompt.handlers.focus({}, cx);
+  assert.equal(view.openField, null);
+  let focused = false;
+  view.inputs.prompt.focus = () => {
+    focused = true;
+  };
+  view.activeInput = 'launch';
+  view.key({ key: 'tab', modifiers: {} }, cx);
+  assert(focused);
+  view.model.project = {};
+  view.model.ref = {};
+  view.model.name = 'feature';
+  let created = 0;
+  view.model.submit = () => {
+    created++;
+  };
+  view.task = (_cx, work) => work();
+  view.inputs.prompt.handlers.submit({}, cx);
+  assert.equal(created, 1);
+  view.model.phase = 'creating';
+  view.render();
+  assert.equal(disabled.get(view.inputs.prompt), true);
+});
+
 test('Enter on secondary buttons never creates a worktree', () => {
   const { view, cx } = keyboardView();
   let creates = 0;
@@ -607,7 +667,7 @@ function browseView(git) {
   view.directoryGeneration = 0;
   view.scroll = { scroll_to_item() {} };
   view.inputs = Object.fromEntries(
-    ['root', 'project', 'machine', 'launch', 'remote'].map((field) => [
+    ['root', 'project', 'machine', 'launch', 'remote', 'prompt'].map((field) => [
       field,
       {
         text: field === 'root' ? '/saved' : '',
@@ -834,7 +894,7 @@ test('a slow machine selection cannot steal focus after the user switches machin
   view.model = model;
   view.filters = { machine: '', project: '', ref: '' };
   view.inputs = Object.fromEntries(
-    ['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch'].map((field) => [
+    ['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch', 'prompt'].map((field) => [
       field,
       {
         set_value() {},
@@ -888,7 +948,7 @@ test('late branch choices cannot steal focus from a same-path project on another
   view.model = model;
   view.filters = { machine: '', project: '', ref: '' };
   view.inputs = Object.fromEntries(
-    ['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch'].map((field) => [
+    ['machine', 'root', 'project', 'remote', 'ref', 'name', 'launch', 'prompt'].map((field) => [
       field,
       {
         set_value() {},

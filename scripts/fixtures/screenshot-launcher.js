@@ -18,13 +18,18 @@ export default class ScreenshotLauncher extends Launcher {
           if (this.initializing || this.model.phase !== 'editing')
             throw new Error(this.model.error || `Not ready: ${this.model.phase}`);
           const m = this.model;
-          const project = m.projects.find((item) => item.label === 'acme/sample-api');
+          // Manual sample scenes simulate opening the project picker.
+          if (scene !== 'current') await m.loadProjects();
+          const project = scene === 'current' ? m.project : m.projects.find((item) => item.label === 'acme/sample-api');
           if (!project) throw new Error('Sample project not discovered.');
           if (scene === 'current') {
+            if (m.projectsLoaded || m.projectsLoading)
+              throw new Error('Current-space startup scanned the project root.');
             while (!m.ref && Date.now() < deadline) await pause(100);
             if (m.project?.id !== project.id || m.ref?.ref !== 'refs/heads/feature/rate-limits' || m.name)
               throw new Error('Current-space project and branch were not preselected.');
           } else {
+            m.selectLaunch(m.launches[0]);
             await m.selectProject(project);
             this.showChoice('project', project.label);
             if (scene === 'fetch') {
@@ -66,6 +71,14 @@ export default class ScreenshotLauncher extends Launcher {
             this.inputs.launch.focus();
             this.field = 'launch';
             this.openField = 'launch';
+          } else if (scene === 'prompt') {
+            const agent = m.launches.find((item) => item.key === 'codex');
+            if (!agent) throw new Error('Codex is needed for the initial-prompt sample.');
+            m.selectLaunch(agent);
+            m.setPrompt('Add rate limits and tests for the API.');
+            this.inputs.prompt.set_value(m.prompt);
+            this.syncContext();
+            this.inputs.prompt.focus();
           } else if (scene === 'fetch') {
             this.inputs.ref.focus();
             this.field = 'ref';

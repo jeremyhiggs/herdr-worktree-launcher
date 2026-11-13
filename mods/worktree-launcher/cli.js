@@ -53,7 +53,13 @@ export async function connectCLI(exec, machine = null) {
   if (context.protocol !== 1)
     throw new Error('Update herdr-worktree-launcher on the selected machine: unsupported API version.');
   const project = (value) => ({ ...value, machine });
-  const request = (value) => ({ ...value, core_id: context.core_id, machine, project: project(value.project) });
+  const request = (value) => {
+    if (value.launch?.prompt && !context.initial_prompt)
+      throw Object.assign(new Error('Update herdr-worktree-launcher on the selected machine to use initial prompts.'), {
+        kind: 'launch_invalid',
+      });
+    return { ...value, core_id: context.core_id, machine, project: project(value.project) };
+  };
   const result = (value) => ({ ...value, request: request(value.request) });
   return {
     machine,
@@ -62,8 +68,8 @@ export async function connectCLI(exec, machine = null) {
     directories: (path) => invoke('directories', { path }),
     discover: async (config) => (await invoke('discover', { config })).map(project),
     project: async (path) => project(await invoke('project', { path })),
-    selection: async (path) => {
-      const value = await invoke('selection', { path });
+    selection: async (path, config = {}) => {
+      const value = await invoke('selection', { path, config });
       return { ...value, project: project(value.project) };
     },
     choices: (project) => invoke('choices', { project }),

@@ -86,12 +86,17 @@ export class WorktreeModel {
     Object.assign(this, { connect, config, saveRoot, journal, open, machine, listAgents });
     this.launches = [shellLaunch];
     this.launch = shellLaunch;
+    this.prompt = '';
     this.git = null;
     this.root = '';
     this.rootReady = false;
     this.generation = 0;
     this.closed = false;
     this.projects = [];
+    this.projectsLoaded = false;
+    this.projectsLoading = false;
+    this.projectsError = '';
+    this.projectScan = 0;
     this.refs = [];
     this.project = null;
     this.ref = null;
@@ -125,6 +130,9 @@ export class WorktreeModel {
   }
   get reusing() {
     return this.result ? !!this.result.request?.reuse : this.action === 'existing' && !!this.ref?.checkout;
+  }
+  get launchRequest() {
+    return { ...this.launch, prompt: this.launch.key === 'shell' ? '' : this.prompt };
   }
   get path() {
     if (this.result) return this.result.path;
@@ -161,13 +169,40 @@ export class WorktreeModel {
     this.name = '';
     this.error = '';
   }
-  async refresh(changed = () => {}) {
+  async loadProjects(changed = () => {}) {
+    if (!this.editable || !this.git || !this.root || this.projectsLoaded || this.projectsLoading) return;
+    const scan = this.projectScan,
+      git = this.git,
+      root = this.root;
+    const current = () => !this.closed && scan === this.projectScan;
+    this.projectsLoading = true;
+    this.projectsError = '';
+    changed();
+    try {
+      const projects = await git.discover({ project_root: root });
+      if (!current()) return;
+      this.projects = projects;
+      this.projectsLoaded = true;
+    } catch (error) {
+      if (current()) this.projectsError = error.message;
+    } finally {
+      if (current()) {
+        this.projectsLoading = false;
+        changed();
+      }
+    }
+  }
+  async refresh(changed = () => {}, deferProjects = false) {
     if (this.busy || this.closed) return;
     const generation = ++this.generation;
     const previousLaunch = this.launch.key;
     this.project = null;
     this.resetFields();
     this.projects = [];
+    this.projectsLoaded = false;
+    this.projectsLoading = false;
+    this.projectsError = '';
+    this.projectScan++;
     this.git = null;
     this.result = null;
     this.pending = null;
@@ -183,11 +218,11 @@ export class WorktreeModel {
       const git = await this.connect(this.machine);
       if (this.closed || generation !== this.generation) return;
       this.git = git;
-      const [contents, programs] = await Promise.all([this.root ? git.discover(config) : [], programsTask]);
+      const [, programs] = await Promise.all([deferProjects ? null : this.loadProjects(changed), programsTask]);
       if (this.closed || generation !== this.generation) return;
+      if (this.projectsError) throw new Error(this.projectsError);
       this.launches = launchChoices(programs);
       this.launch = this.launches.find((item) => item.key === previousLaunch) ?? shellLaunch;
-      this.projects = contents;
       this.result = null;
       this.rootReady = !!this.root;
       this.phase = 'editing';
@@ -201,6 +236,7 @@ export class WorktreeModel {
     if (!this.canSelectMachine) return false;
     if (this.machine === machine) return false;
     this.launch = shellLaunch;
+    this.prompt = '';
     this.launches = [shellLaunch];
     this.machine = machine;
     this.root = '';
@@ -309,6 +345,9 @@ export class WorktreeModel {
     const selected = this.launches.find((item) => item.key === launch.key);
     if (selected) this.launch = selected;
   }
+  setPrompt(prompt) {
+    if (!this.closed && ['editing', 'recover'].includes(this.phase)) this.prompt = prompt;
+  }
   close() {
     if (this.busy) {
       this.error = 'The operation is finishing. This window stays open until the outcome is known.';
@@ -350,7 +389,7 @@ export class WorktreeModel {
         checkout: this.action === 'existing' ? this.ref.checkout : null,
       });
       if (request.path !== path) await this.reconcile({ ...request, machine: this.machine });
-      request.launch = this.launch;
+      request.launch = this.launchRequest;
       request.attempt = randomUUID();
       await this.journal.save(request);
       this.pending = request;
@@ -369,7 +408,7 @@ export class WorktreeModel {
       } else this.phase = 'partial';
     } catch (e) {
       this.error = e.message;
-      if (saved && ['context_missing', 'dependency_missing', 'core_unavailable'].includes(e.kind)) {
+      if (saved && ['context_missing', 'dependency_missing', 'core_unavailable', 'launch_invalid'].includes(e.kind)) {
         try {
           await this.journal.clear(this.pending);
           this.pending = null;
@@ -397,7 +436,7 @@ export class WorktreeModel {
         await this.journal.clear(this.pending);
         this.pending = null;
       }
-      const request = { ...result.request, launch: this.launch };
+      const request = { ...result.request, launch: this.launchRequest };
       this.result = { ...result, request };
       await open(request);
       this.phase = 'complete';

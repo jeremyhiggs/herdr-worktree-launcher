@@ -15,7 +15,7 @@ Start with the [desktop installation](#install-the-desktop-launcher) and [first-
 | Existing branches | Create a checkout for an available branch, or use its existing worktree folder. |
 | Fetch remote branches | Fetch `origin` or another Git remote, then select new or updated branches without leaving the launcher. |
 | Fresh sessions | Detect the worktree's existing Herdr space and open a new tab, or create a space. |
-| Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only agents detected on the selected machine appear. |
+| Shells and agents | Start Shell, Claude Code, Pi, OpenCode, or Codex. Only installed agents appear; give an agent an optional initial prompt. |
 | Local and remote projects | Browse project folders and save a separate project root for each connected machine. |
 | Native Herdr workflow | Keep worktrees grouped beneath their project, use keyboard controls, and follow Herdr's light or dark theme. |
 | Terminal CLI | Infer the current checkout and branch, or specify them explicitly. Works from a mobile terminal. |
@@ -151,6 +151,14 @@ Matching uses the exact checkout folder on that machine. A space for another che
 
 `--execute` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
 
+Add `--prompt` to start the selected agent with a task:
+
+```sh
+herdr-worktree-launcher new fix/tests --execute codex --prompt 'Fix the failing tests and explain the changes.'
+```
+
+The agent stays interactive. Quote the prompt as one shell argument. `--prompt` requires an agent and is rejected for Shell. In the desktop launcher, select an agent under **Open with**, then fill in **Initial prompt (optional)**. Leave it blank to start without a message. Dry-run shows the prompt in the planned arguments. Update the CLI on the selected machine to use this feature; the UI reports an error if that CLI does not support prompts.
+
 Use `--attach` to enter the new terminal immediately. Otherwise, the output includes an `hc attach` command. `--json` returns the checkout path and terminal, space, and tab IDs for scripts.
 
 The CLI operates only on the machine where it runs. To use devbox, run the command inside a devbox terminal. It has no machine-routing flags.
@@ -233,11 +241,13 @@ You can also enter an absolute project-root path directly. The launcher saves a 
 
 ### Start from the current space
 
-When you open the launcher, it selects the active space's machine. If its repository appears under the saved project root, the launcher preselects that project and the checkout's current branch.
+When you open the launcher, it selects the active space's machine and resolves that checkout's project and current branch directly. With a saved project root, the current project must be inside it and pass the discovery exclusions.
 
 The lookup uses the focused terminal's live folder, including changes since the space was created. If no terminal has focus, it uses a terminal in the active tab, then the space's starting folder.
 
-The form shows **Loading projects and current checkout…** until discovery and initial branch selection finish. Editing and creation stay disabled during this wait. You can still use **Close** or **Esc**.
+The form shows **Loading current checkout…** until the initial selection finishes. It does not scan the full project root first. Open the **Project** picker to load the other projects; this scan keeps your current branch, name, and prompt editable. The list is cached for this launcher window. **Refresh** reloads it.
+
+If there is no usable current checkout, the launcher loads the project list for manual selection. You can use **Close** or **Esc** while initialization is pending.
 
 For example, opening from a worktree on `feature/payments` selects that branch as the base for a new worktree. Enter a new branch name to continue. You can change either selection.
 
@@ -304,6 +314,10 @@ Each launch starts a fresh shell or agent. Older tabs keep running. Retrying an 
 The selected agent starts in the worktree with its Herdr launch settings. The primary project keeps its existing terminals.
 
 ![Open with menu offering Shell and the agents available in this sample installation](docs/screenshots/open-with.png)
+
+Select an agent to show **Initial prompt (optional)**, then enter its first task:
+
+![Codex selected with an initial prompt to add rate limits and API tests](docs/screenshots/initial-prompt.png)
 
 *This sample installation detects OpenCode and Codex. Your menu reflects the programs available on the selected machine.*
 

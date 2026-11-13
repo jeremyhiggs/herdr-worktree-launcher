@@ -84,6 +84,7 @@ export default class WorktreeLauncher extends View {
       ['name', 'New branch name'],
       ['ref', 'Search local and fetched remote branches'],
       ['launch', 'Shell or installed agent'],
+      ['prompt', 'What should the agent work on?'],
     ]) {
       const input = InputState.new({ placeholder });
       this.inputs[field] = input;
@@ -92,6 +93,8 @@ export default class WorktreeLauncher extends View {
         if (field === 'name') {
           this.model.setName(input.value());
           this.preview(cx);
+        } else if (field === 'prompt') {
+          this.model.setPrompt(input.value());
         } else if (field === 'root') {
           this.openField = null;
           this.rootRevision++;
@@ -102,6 +105,7 @@ export default class WorktreeLauncher extends View {
           this.filters[field] = input.value();
           this.index = 0;
           this.scroll.scroll_to_item(0);
+          if (field === 'project') this.loadProjects(cx);
         }
         cx.notify();
       });
@@ -110,11 +114,12 @@ export default class WorktreeLauncher extends View {
         this.openField =
           field === 'root' && this.openField === 'directory'
             ? 'directory'
-            : ['name', 'root'].includes(field)
+            : ['name', 'root', 'prompt'].includes(field)
               ? null
               : field;
-        if (!['name', 'root'].includes(field)) this.field = field;
+        if (!['name', 'root', 'prompt'].includes(field)) this.field = field;
         this.index = 0;
+        if (field === 'project') this.loadProjects(cx);
         cx.notify();
       });
       input.on('blur', (_e, cx) => {
@@ -142,14 +147,14 @@ export default class WorktreeLauncher extends View {
     this.task(cx, async (_open, changed) => {
       window.activate_window();
       try {
-        const pending = this.model.refresh(changed);
+        const pending = this.model.refresh(changed, !!folder);
         let generation = this.model.generation;
         await pending;
         if (this.model.closed || generation !== this.model.generation) return;
         if (folder && this.model.git) {
-          const selection = await this.model.git.selection(folder).catch(() => null);
+          const selection = await this.model.git.selection(folder, { project_root: this.model.root }).catch(() => null);
           if (this.model.closed || generation !== this.model.generation) return;
-          const project = this.model.projects.find((row) => row.id === selection?.project.id);
+          const project = selection?.project;
           if (project) {
             const selecting = this.model.selectProject(project);
             generation = this.model.generation;
@@ -160,6 +165,13 @@ export default class WorktreeLauncher extends View {
             if (ref) {
               this.model.selectRef(ref);
               this.showChoice('ref', ref.label);
+            }
+          } else {
+            await this.model.loadProjects(changed);
+            if (this.model.closed || generation !== this.model.generation) return;
+            if (this.model.projectsError) {
+              this.model.error = this.model.projectsError;
+              this.model.rootReady = false;
             }
           }
         }
@@ -222,6 +234,11 @@ export default class WorktreeLauncher extends View {
     });
   }
 
+  loadProjects(cx) {
+    if (this.initializing || this.savingRoot || this.model.projectsLoaded || this.model.projectsLoading) return;
+    this.task(cx, (_open, changed) => this.model.loadProjects(changed));
+  }
+
   syncContext() {
     const m = this.model;
     if (this.syncedRemote !== m.remote) {
@@ -236,6 +253,7 @@ export default class WorktreeLauncher extends View {
       const changeMachine = this.syncedMachine !== m.machine;
       this.syncing = true;
       try {
+        if (changeMachine) this.inputs.prompt.set_value(m.prompt);
         if (changeMachine || !this.rootDraft) {
           this.inputs.root.set_value(m.root);
           this.rootDraft = false;
@@ -366,6 +384,8 @@ export default class WorktreeLauncher extends View {
 
   emptyMessage(field) {
     const m = this.model;
+    if (field === 'project' && m.projectsLoading) return 'Loading projects…';
+    if (field === 'project' && m.projectsError) return m.projectsError;
     if (field === 'directory')
       return this.directoryLoading
         ? 'Loading directories…'
@@ -520,6 +540,7 @@ export default class WorktreeLauncher extends View {
         ...(this.model.project ? ['ref'] : []),
         ...(this.model.action === 'new' && this.model.ref ? ['name'] : []),
         'launch',
+        ...(this.model.launch.key !== 'shell' ? ['prompt'] : []),
         'refresh',
         'close',
         this.model.phase === 'recover' ? 'open-created' : 'create',
@@ -698,7 +719,7 @@ export default class WorktreeLauncher extends View {
       !this.initializing &&
       (field === 'machine'
         ? m.canSelectMachine
-        : field === 'launch'
+        : field === 'launch' || field === 'prompt'
           ? !m.closed && ['editing', 'recover'].includes(m.phase)
           : m.editable);
     const input = (field) =>
@@ -716,17 +737,19 @@ export default class WorktreeLauncher extends View {
             ? m.action === 'new'
               ? 'Base branch'
               : 'Existing branch'
-            : field === 'launch'
-              ? 'Open with'
-              : field === 'remote'
-                ? 'Git remote'
-                : field === 'name'
-                  ? 'New branch name'
-                  : field === 'root'
-                    ? 'Project root'
-                    : field === 'machine'
-                      ? 'Machine'
-                      : 'Project',
+            : field === 'prompt'
+              ? 'Initial prompt (optional)'
+              : field === 'launch'
+                ? 'Open with'
+                : field === 'remote'
+                  ? 'Git remote'
+                  : field === 'name'
+                    ? 'New branch name'
+                    : field === 'root'
+                      ? 'Project root'
+                      : field === 'machine'
+                        ? 'Machine'
+                        : 'Project',
         )
         .h(34)
         .px(10)
@@ -744,6 +767,7 @@ export default class WorktreeLauncher extends View {
             if (this.savingRoot || !editable(field)) return;
             this.field = field;
             this.openField = field;
+            if (field === 'project') this.loadProjects(cx);
             cx.notify();
           })
           .child(input(field)),
@@ -795,9 +819,7 @@ export default class WorktreeLauncher extends View {
           ),
       )
       .when(this.initializing, (el) =>
-        el.child(
-          div().id('startup-loading').text_size(11).text_color(t.muted).child('Loading projects and current checkout…'),
-        ),
+        el.child(div().id('startup-loading').text_size(11).text_color(t.muted).child('Loading current checkout…')),
       )
       .child(label('Machine'))
       .child(picker('machine'))
@@ -916,6 +938,7 @@ export default class WorktreeLauncher extends View {
       )
       .child(label('Open with'))
       .child(picker('launch'))
+      .when(m.launch.key !== 'shell', (el) => el.child(label('Initial prompt (optional)')).child(input('prompt')))
       .when(Boolean(m.error), (el) =>
         el.child(
           div()
