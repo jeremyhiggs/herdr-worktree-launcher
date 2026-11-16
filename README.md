@@ -317,6 +317,8 @@ The selected agent starts in the worktree with its Herdr launch settings. The pr
 
 Select an agent to show **Initial prompt (optional)**, then enter its first task:
 
+The prompt accepts multiple lines. **Enter** adds a line; **⌘Enter** creates or opens the worktree.
+
 ![Codex selected with an initial prompt to add rate limits and API tests](docs/screenshots/initial-prompt.png)
 
 *This sample installation detects OpenCode and Codex. Your menu reflects the programs available on the selected machine.*
@@ -365,6 +367,7 @@ Project discovery, Git commands, worktrees, and agents all use the selected mach
 | ↑ / ↓ | Move through an open choice list |
 | Enter | Select an open choice, or create/open when the form is ready |
 | Enter in Project root | Save the root |
+| Enter in Initial prompt | Add a new line (⌘Enter creates/opens) |
 | Enter on Fetch / ⌘Enter in Git remote | Fetch the selected remote |
 | ⌘Enter | Create/open directly, or save when Project root has focus |
 | Tab / Shift+Tab | Move between controls |

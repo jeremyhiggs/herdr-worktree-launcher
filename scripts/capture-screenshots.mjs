@@ -109,12 +109,7 @@ try {
     await log.close();
   }
   await waitFor(status, (value) => Array.isArray(value.errors), 'sample app startup');
-  await execute('/usr/bin/osascript', [
-    '-l',
-    'JavaScript',
-    '-e',
-    `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${sampleApp.pid}).activateWithOptions(2);`,
-  ]);
+  // The native sample mod activates its own window before each capture.
   await delay(1000);
   await waitFor(
     async () => {

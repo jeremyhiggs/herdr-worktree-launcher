@@ -8,7 +8,7 @@ import { createConfigStore } from '../mods/worktree-launcher/config.js';
 const modules = {
   'gpui-kit': 'export class View {} export const div = () => globalThis.launcherElement();',
   'gpui-base':
-    'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:id=>globalThis.launcherElement(id)},Input={new:state=>globalThis.launcherElement(state)},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})};',
+    'const el=()=>globalThis.launcherElement(); export const v_flex=el,h_flex=el,v_virtual_list=el,Button={new:id=>globalThis.launcherElement(id)},Input={new:state=>globalThis.launcherElement(state)},Textarea={new:state=>globalThis.launcherElement(state)},Popup={new:el},Scrollbar={vertical:el},TextView={html:el},VirtualListScrollHandle={new:()=>({scroll_to_item(){}})},InputState={new:()=>({handlers:{},text:"",on(event,fn){this.handlers[event]=fn;},set_value(value){this.text=value;},value(){return this.text;},focus(){}})}; export const TextareaState=InputState;',
   herdr:
     'export const exec=null,home=()=>"/fixture-home",appHome=()=>"/fixture-app",readTextFile=null,writeTextFile=null,spaces=()=>globalThis.launcherSpaces,panes=()=>globalThis.launcherPanes,focused=()=>globalThis.launcherFocused,machines=null,knownAgents=async()=>[],pickFolder=null,shared=null,setShared=null,run=null,theme=()=>({}); export const props=()=>({overlay:"fixture-overlay"}),closeOverlay=id=>globalThis.launcherClosedOverlays.push(id);',
 };
@@ -538,9 +538,9 @@ test('the initial prompt is agent-only, editable, keyboard reachable, and submit
   view.render();
   assert(labels.includes('Initial prompt (optional)'));
   assert.equal(disabled.get(view.inputs.prompt), false);
-  view.inputs.prompt.set_value('Explain the checkout.');
+  view.inputs.prompt.set_value('Explain the checkout.\nThen run the tests.');
   view.inputs.prompt.handlers.change({}, cx);
-  assert.equal(view.model.prompt, 'Explain the checkout.');
+  assert.equal(view.model.prompt, 'Explain the checkout.\nThen run the tests.');
   view.inputs.prompt.handlers.focus({}, cx);
   assert.equal(view.openField, null);
   let focused = false;
@@ -558,8 +558,14 @@ test('the initial prompt is agent-only, editable, keyboard reachable, and submit
     created++;
   };
   view.task = (_cx, work) => work();
+  view.activeInput = 'prompt';
+  view.key({ key: 'enter' }, cx);
   view.inputs.prompt.handlers.submit({}, cx);
+  assert.equal(created, 0, 'Plain Enter must remain a newline, not create a worktree');
+  view.inputs.prompt.handlers.submit({ secondary: true }, cx);
   assert.equal(created, 1);
+  view.key({ key: 'enter', keystroke: 'cmd-enter' }, cx);
+  assert.equal(created, 2, 'Cmd+Enter still submits');
   view.model.phase = 'creating';
   view.render();
   assert.equal(disabled.get(view.inputs.prompt), true);

@@ -1,5 +1,5 @@
 {
   "place": "none",
   "title": "Worktree Launcher",
-  "overlay": { "kind": "window", "width": 700, "height": 790 }
+  "overlay": { "kind": "window", "width": 700, "height": 860 }
 }

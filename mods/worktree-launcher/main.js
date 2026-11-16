@@ -4,6 +4,8 @@ import {
   h_flex,
   InputState,
   Input,
+  TextareaState,
+  Textarea,
   Button,
   Popup,
   v_virtual_list,
@@ -86,7 +88,7 @@ export default class WorktreeLauncher extends View {
       ['launch', 'Shell or installed agent'],
       ['prompt', 'What should the agent work on?'],
     ]) {
-      const input = InputState.new({ placeholder });
+      const input = field === 'prompt' ? TextareaState.new({ placeholder, rows: 3 }) : InputState.new({ placeholder });
       this.inputs[field] = input;
       input.on('change', (_e, cx) => {
         if (this.syncing) return;
@@ -505,6 +507,7 @@ export default class WorktreeLauncher extends View {
 
   submitInput(field, event, cx) {
     if (this.initializing || this.savingRoot || this.model.busy) return;
+    if (field === 'prompt' && !event.secondary) return;
     if (field === 'root') {
       if (!event.secondary && this.openField === 'directory' && this.directoryEntries.length)
         this.choose(this.directoryEntries[this.index], cx, 'directory');
@@ -569,6 +572,7 @@ export default class WorktreeLauncher extends View {
       this.model.canCreate &&
       !this.openField &&
       this.activeInput !== 'root' &&
+      this.activeInput !== 'prompt' &&
       (!focusedButton || focusedButton === 'create')
     ) {
       cx.stop_propagation();
@@ -723,7 +727,7 @@ export default class WorktreeLauncher extends View {
           ? !m.closed && ['editing', 'recover'].includes(m.phase)
           : m.editable);
     const input = (field) =>
-      Input.new(this.inputs[field])
+      (field === 'prompt' ? Textarea.new(this.inputs[field]) : Input.new(this.inputs[field]))
         .disabled(
           this.savingRoot ||
             !editable(field) ||
@@ -751,7 +755,7 @@ export default class WorktreeLauncher extends View {
                         ? 'Machine'
                         : 'Project',
         )
-        .h(34)
+        .h(field === 'prompt' ? 84 : 34)
         .px(10)
         .rounded(6)
         .border_1()
@@ -791,6 +795,7 @@ export default class WorktreeLauncher extends View {
       })
       .on_mouse_down('left', (_e, cx) => cx.stop_propagation())
       .size_full()
+      .overflow_y_scrollbar()
       .p(18)
       .gap(10)
       .bg(t.popover)
@@ -1004,13 +1009,15 @@ export default class WorktreeLauncher extends View {
           .text_size(10.5)
           .text_color(t.dim)
           .child(
-            this.activeInput === 'root'
-              ? '↑↓ choose · Enter opens folder · Cmd+Enter saves root · Esc closes'
-              : this.activeInput === 'remote'
-                ? '↑↓ choose · Enter selects remote · Cmd+Enter fetches · Esc closes'
-                : m.reusing
-                  ? '↑↓ choose · Enter selects / opens · Tab changes field · Cmd+Enter opens · Esc closes'
-                  : '↑↓ choose · Enter selects / creates · Tab changes field · Cmd+Enter creates · Esc closes',
+            this.activeInput === 'prompt'
+              ? 'Enter adds a line · Cmd+Enter creates / opens · Esc closes'
+              : this.activeInput === 'root'
+                ? '↑↓ choose · Enter opens folder · Cmd+Enter saves root · Esc closes'
+                : this.activeInput === 'remote'
+                  ? '↑↓ choose · Enter selects remote · Cmd+Enter fetches · Esc closes'
+                  : m.reusing
+                    ? '↑↓ choose · Enter selects / opens · Tab changes field · Cmd+Enter opens · Esc closes'
+                    : '↑↓ choose · Enter selects / creates · Tab changes field · Cmd+Enter creates · Esc closes',
           ),
       );
   }

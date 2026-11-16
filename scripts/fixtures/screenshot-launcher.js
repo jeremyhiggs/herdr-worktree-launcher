@@ -75,7 +75,7 @@ export default class ScreenshotLauncher extends Launcher {
             const agent = m.launches.find((item) => item.key === 'codex');
             if (!agent) throw new Error('Codex is needed for the initial-prompt sample.');
             m.selectLaunch(agent);
-            m.setPrompt('Add rate limits and tests for the API.');
+            m.setPrompt('Add rate limits for the API.\nCover the limits with tests.\nExplain the changes.');
             this.inputs.prompt.set_value(m.prompt);
             this.syncContext();
             this.inputs.prompt.focus();
