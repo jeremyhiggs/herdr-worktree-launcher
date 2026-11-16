@@ -42,6 +42,8 @@ pnpm run install:mod
 
 The installer copies the mod, checks it with your installed Herdr, and adds **⌘⇧G** (Command+Shift+G). It preserves existing settings and keybindings.
 
+Avoid editing project roots or keybindings while the installer runs. It checks for changed files, but the check and write are separate: concurrent edits to existing settings files can still be overwritten. New files use exclusive creation, and existing keybindings are backed up before a shortcut change.
+
 A dependency installation with `pnpm install` is not required.
 
 For prebuilt CLI archives and checksum instructions, see [Install a package](docs/packages.md). A prebuilt CLI needs no Go installation.
@@ -150,6 +152,8 @@ Each successful command starts a **fresh terminal**. If a matching Herdr space e
 Matching uses the exact checkout folder on that machine. A space for another checkout of the same repository stays separate.
 
 `--execute` supports `shell`, `claude`, `pi`, `opencode`, and `codex`. The prompts offer only programs available on the local `PATH`. Shell is the default. The CLI uses local executables; desktop launch overrides do not apply.
+
+The stock Codex command uses `codex --no-daemon`. Desktop launch overrides keep their configured options; the launcher does not add that flag to custom commands.
 
 Add `--prompt` to start the selected agent with a task:
 

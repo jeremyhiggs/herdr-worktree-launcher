@@ -21,6 +21,8 @@ The installer requires Node 24 or newer, pnpm 11.x, and `herdr-app` in your term
 
 It copies files into `${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/worktree-launcher` and runs a native loading check. Updates preserve saved roots and recovery records.
 
+Avoid editing project roots or keybindings during installation. Existing-file conflict checks are not atomic with other writers, so concurrent edits can be overwritten. New files use exclusive creation; shortcut changes also back up existing keybindings.
+
 The installer adds **⌘⇧G** (Command+Shift+G) unless it already has another action. To preserve a conflicting shortcut, add `--no-shortcut`.
 
 Open with **⌘⇧G**, or run:
@@ -70,6 +72,8 @@ Checked-out branches also remain available as bases for **New branch**.
 An existing remote branch creates a local branch that tracks that remote. A new branch has no upstream.
 
 **Open with** defaults to **Shell**. Claude Code, Pi, OpenCode, and Codex appear when Herdr detects them on the selected machine. The UI passes Herdr launch settings to the CLI, which checks the executable on the target machine.
+
+Custom agent commands retain their configured options. The stock Codex command uses `codex --no-daemon`; a custom Codex command is not given that flag automatically.
 
 When you select an agent, **Initial prompt (optional)** appears below **Open with**. Enter the first task for the agent, or leave it blank. The field accepts multiple lines: **Enter** adds a line and **⌘Enter** creates/opens the worktree. Shell has no prompt field.
 

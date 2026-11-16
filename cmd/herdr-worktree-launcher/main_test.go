@@ -256,9 +256,6 @@ func TestInitialPromptArguments(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := []string{filepath.Join(f.bin, "git"), "--fixture"}
-		if key == "codex" {
-			want = append(want, "--no-daemon")
-		}
 		if key == "opencode" {
 			want = append(want, "--prompt="+prompt)
 		} else {
@@ -267,6 +264,18 @@ func TestInitialPromptArguments(t *testing.T) {
 		if !slices.Equal(argv, want) {
 			t.Fatalf("%s: got %q, want %q", key, argv, want)
 		}
+	}
+	if err := os.Symlink(filepath.Join(f.bin, "git"), filepath.Join(f.bin, "codex")); err != nil {
+		t.Fatal(err)
+	}
+	_, stock, err := launchProgram(Launch{Key: "codex"})
+	if err != nil || !slices.Equal(stock, []string{filepath.Join(f.bin, "codex"), "--no-daemon"}) {
+		t.Fatalf("stock Codex options: %q %v", stock, err)
+	}
+	custom := []string{filepath.Join(f.bin, "codex"), "--remote", "ws://example.invalid:1234"}
+	_, configured, err := launchProgram(Launch{Key: "codex", Argv: custom})
+	if err != nil || !slices.Equal(configured, custom) {
+		t.Fatalf("configured Codex options changed: %q %v", configured, err)
 	}
 	_, argv, err := launchProgram(Launch{Key: "pi", Argv: []string{"git"}, Prompt: "@not-a-file"})
 	if err != nil || argv[len(argv)-1] != " @not-a-file" {
@@ -464,7 +473,7 @@ func TestWorktreeOpeningEnsuresCanonicalShellSpaceWithoutDuplicates(t *testing.T
 			runs = append(runs, call["params"].(map[string]any))
 		}
 	}
-	if len(runs) != 2 || len(runs[0]["argv"].([]any)) != 0 || len(runs[1]["argv"].([]any)) != 4 || runs[1]["argv"].([]any)[3] != r.Launch.Prompt {
+	if len(runs) != 2 || len(runs[0]["argv"].([]any)) != 0 || len(runs[1]["argv"].([]any)) != 3 || runs[1]["argv"].([]any)[2] != r.Launch.Prompt {
 		t.Fatalf("selected program must run only in target: %+v", runs)
 	}
 	for _, params := range runs {

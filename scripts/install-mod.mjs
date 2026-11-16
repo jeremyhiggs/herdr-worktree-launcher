@@ -101,6 +101,8 @@ async function install() {
     }
   }
 
+  // ponytail: existing-file snapshot checks are not cross-process CAS.
+  // Use an atomic Herdr CLI write API when available; avoid concurrent settings edits meanwhile.
   const configPath = join(appHome, 'data/worktree-launcher-config.json');
   const originalConfig = await readOptional(configPath);
   const legacyPath = join(target, 'config.json');

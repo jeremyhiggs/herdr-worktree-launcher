@@ -1121,17 +1121,6 @@ func launchProgram(launch Launch) (string, []string, error) {
 				return "", nil, errors.New(key + " is not installed.")
 			}
 			resolved := append([]string{path}, argv[1:]...)
-			if key == "codex" {
-				found := false
-				for _, arg := range resolved[1:] {
-					if arg == "--no-daemon" {
-						found = true
-					}
-				}
-				if !found {
-					resolved = append(resolved, "--no-daemon")
-				}
-			}
 			if launch.Prompt != "" {
 				prompt := launch.Prompt
 				if key == "opencode" {

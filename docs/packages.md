@@ -39,6 +39,8 @@ pnpm run install:mod
 
 Run the same command again to update the mod. Saved roots and existing settings are preserved. The installer checks native loading before replacing installed code or settings and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
 
+Avoid editing project roots or keybindings while installation is running. Concurrent edits to existing settings files can be overwritten because the conflict check and write are separate.
+
 If you do not use pnpm, run `node scripts/install-mod.mjs` instead. No dependency installation is required.
 
 Node is required only for this installer. The running mod calls the standalone CLI. The mod supplies a verified running core ID automatically. No manual core environment export is required for the desktop UI.
