@@ -144,7 +144,7 @@ The native sample uses separate home, app, core-session, socket, shell, and XDG 
 
 The fetch scene discovers a server-only branch from the selected remote. Existing-worktree opening preserves the worktree list. Reopening that checkout adds a fresh tab in the same space. New-branch creation opens a focused shell in its worktree.
 
-The latest capture also reopens the launcher from that created worktree. It asserts the automatic project and base-branch selections, with an empty new-branch name, before taking `current-space.png`. All seven README screenshots were refreshed and visually inspected.
+The capture driver also reopens the launcher from that created worktree. It asserts the automatic project and base-branch selections, with an empty new-branch name and no full project scan, before taking `current-space.png`. The README contains eight screenshots from isolated sample installations.
 
 A later regression check opened a worktree tab inside the primary project's space, so the live folder differed from the stored space folder. The old lookup failed the selection assertion. The corrected lookup passed in the native sample app. The capture script now includes this case; its diagnostic images remain outside the README.
 

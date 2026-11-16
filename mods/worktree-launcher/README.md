@@ -33,11 +33,11 @@ herdr-app do mod.open --name worktree-launcher
 
 ## First use
 
-The launcher starts on the active space's machine. If its repository appears under the saved root, the project and current checkout branch are preselected. This also works from a linked worktree. Enter a new branch name, or change the suggestions. A detached checkout leaves the base unselected.
+The launcher starts on the active space's machine. It resolves the current checkout directly and preselects its project and branch when available. This also works from a linked worktree. Enter a new branch name, or change the suggestions. A detached checkout leaves the base unselected.
 
 The lookup uses the focused terminal's live folder. Its fallbacks are a terminal in the active tab, then the space's starting folder.
 
-During startup, **Loading projects and current checkout…** appears and the form stays disabled until the initial selections are ready. **Close** and **Esc** remain available.
+During startup, **Loading current checkout…** appears and the form stays disabled until the initial selections are ready. **Close** and **Esc** remain available. With a current project selected, the full project list loads when you open the **Project** picker and is cached for that window. Without a usable current checkout, the list loads for manual selection.
 
 1. Select **Local** or a connected machine.
 2. Use **Browse…** to choose the directory that contains your projects, or enter its absolute path.
