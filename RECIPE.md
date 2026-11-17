@@ -77,7 +77,7 @@ The CLI uses Git, Worktrunk's `wt`, and Herdr Core's `hc`. Worktrunk creates che
 
 Before installing the mod, install the CLI on each target machine. Follow the [README](README.md) or [package guide](docs/packages.md). The repository's `mise.toml` declares the source toolchain. Building the CLI requires Go. Its installed executable needs no Go or Node runtime. The supplied mod installer requires Node 24 or newer. pnpm is optional for that installer.
 
-Project-scoped mise tools apply only inside this checkout. A runtime Worktrunk installation must remain available outside it, such as through `mise use --global worktrunk@latest` with shell activation. Git, Herdr.app, and `hc` use separate installers.
+Project-scoped mise tools apply only inside this checkout. With mise activated, the installation commands use pnpm directly. Runtime `wt` and `hc` commands must also remain available wherever the launcher runs. Personal global defaults are optional if the commands already work. Git is already available on macOS. Herdr.app and Herdr Core remain managed outside this project's mise configuration.
 
 For a manual gallery installation:
 

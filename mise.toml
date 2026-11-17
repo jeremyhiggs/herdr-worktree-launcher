@@ -5,9 +5,8 @@ go = "1.27.3"
 node = "24.22.2"
 pnpm = "11.28.6"
 
-# Runtime dependency on each target machine. Git and Herdr Core (hc) use their
-# platform/upstream installers. A project tool is not a global PATH default;
-# users can choose a current runtime with `mise use --global worktrunk@latest`.
+# Runtime dependency on each target machine. `mise install` selects it inside
+# this checkout. A global default is optional for launches from other folders.
 worktrunk = "0.81.0"
 
 # Validation tools for development and CI; not needed by installed launchers.

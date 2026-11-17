@@ -18,13 +18,13 @@ No dependency installation is required. If you do not use pnpm, run `./scripts/i
 
 The executable needs Git, Worktrunk (`wt`), and Herdr Core (`hc`) on PATH. It needs no Go or Node runtime.
 
-With [mise](https://mise.jdx.dev/getting-started.html), install a current Worktrunk runtime globally:
+If Worktrunk is not already on PATH, [mise](https://mise.jdx.dev/getting-started.html) can supply a personal default:
 
 ```sh
 mise use --global worktrunk@latest
 ```
 
-Activate mise in the shell used by Herdr so `wt` remains available outside this package folder. Git and `hc` use their system or upstream installers. Mise's `herdr` registry entry installs the separate TUI, not `hc`.
+No global change is needed if `wt` already works. Activate mise in the shell used by Herdr to use a mise-managed default. Git is already available on macOS. Use your existing `hc`, or obtain it through Herdr's installer. Mise's `herdr` registry entry installs the separate TUI, not `hc`.
 
 Run from an environment with `HC_SOCKET` or `HC_SESSION` identifying an already running core. Missing context or Worktrunk stops creation. The CLI never starts a default core.
 

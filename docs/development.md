@@ -6,17 +6,19 @@ For user instructions, see the [README](../README.md). The [validation report](v
 
 `mise.toml` declares Go, Worktrunk, Node, pnpm, and all validation tools. Exact versions provide the same baseline locally and in CI.
 
-Install Git and zsh (already supplied on macOS), then install the pinned tools and development dependencies:
+Use the existing Git and zsh on macOS. On Linux, install them if needed. With mise activated, install the declared tools:
 
 ```sh
 mise trust
 mise install
-mise exec -- pnpm install
+pnpm install
 ```
 
-Activate mise in your shell, or prefix the commands below with `mise exec --`. Project tools apply inside this checkout. An installed launcher still needs Git, `wt`, and `hc` on PATH wherever it runs. The README describes global Worktrunk setup.
+Run pnpm directly with mise activated. An unactivated shell can prefix commands with `mise exec --`. Project tools apply inside this checkout. An installed launcher still needs Git, `wt`, and `hc` on PATH wherever it runs. Personal global defaults are optional if these commands are already available.
 
-Mise accepts version prefixes and `latest`, but not `>=` tool-version ranges. These pins are the tested development baseline. The mod installer accepts Node 24 or newer and pnpm 11.x. Git, zsh, Herdr.app, and `hc` use system or upstream installers.
+Mise accepts version prefixes and `latest`, but not `>=` tool-version ranges. These pins are the tested development baseline. The mod installer accepts Node 24 or newer and pnpm 11.x. Herdr.app and Herdr Core remain separate installations.
+
+Use the existing `hc` from PATH. The project does not manage a second Herdr Core installation or change its updater. Automated session tests use protocol fixtures; native checks use an explicitly selected isolated core.
 
 ## Check changes
 

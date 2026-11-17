@@ -32,31 +32,27 @@ If a created worktree's session fails to open, you can retry opening it without 
 You need:
 
 - [Herdr for macOS](https://herdr.dev/download/), with `herdr-app` and [Herdr Core (`hc`)](https://github.com/herdrdev/herdr-core#install) available in your terminal.
-- Git on each target machine, installed through your system package manager or developer tools.
-- [mise](https://mise.jdx.dev/getting-started.html) for the source installation below. The repository declares Go, Node, pnpm, and Worktrunk in `mise.toml`.
+- Git, already available on your Mac. On Linux, install it through your system package manager if needed.
+- [mise](https://mise.jdx.dev/getting-started.html), activated in your shell. The repository declares Go, Node, pnpm, and Worktrunk in `mise.toml`.
 
 Download or clone this repository. In your terminal, change into its directory, then run:
 
 ```sh
 mise trust
 mise install
-mise exec -- pnpm run install:cli
-mise exec -- pnpm run install:mod
+pnpm run install:cli
+pnpm run install:mod
 ```
 
-`mise install` installs the tested build, installer, and validation tools. `mise exec` uses those tools without requiring shell activation. No npm dependency installation is required.
+`mise install` installs the declared tools, including the tested build, installer, and validation tools. With mise activated, run pnpm commands directly. No npm dependency installation is required.
 
-The installed launcher needs Git, [Worktrunk](https://worktrunk.dev/) (`wt`), and `hc` on each target machine. Project-scoped mise tools apply only inside this checkout. For launches from other projects, add Worktrunk to your global mise settings:
+The installed launcher needs Git, [Worktrunk](https://worktrunk.dev/) (`wt`), and `hc` on each target machine. `mise install` is enough for commands inside this checkout. For launches elsewhere, those commands must also be available in that environment. Verify `wt --version` and `hc --version` in a Herdr terminal. No global setup is needed if they already work.
 
-```sh
-mise use --global worktrunk@latest
-```
-
-[Activate mise](https://mise.jdx.dev/getting-started.html#activate-mise) in the shell that Herdr uses. Verify `wt --version` in a new Herdr terminal before using the launcher.
+If `wt` is unavailable outside this checkout, an optional personal default is `mise use --global worktrunk@latest`. Project settings select tool versions only inside their directory tree. See [mise shell setup](https://mise.jdx.dev/getting-started.html#activate-mise) for activation and shims. `mise exec --` is an alternative for an unactivated shell, not a required prefix.
 
 Mise supports `latest` and version prefixes, but [not minimum-version ranges](https://mise.jdx.dev/dev-tools/versions). The repository keeps exact tested versions for reproducible development and CI. Node 24 or newer and pnpm 11.x are the installer requirements. The current stable Worktrunk release can serve as the runtime dependency.
 
-Git and Herdr use their own installers. `mise install` does not install the desktop app or `hc`. The registry's `herdr` tool is the separate TUI, not Herdr Core.
+Herdr Core stays managed by Herdr or your existing installation. The launcher uses `hc` from PATH; this mise configuration does not install another copy. The registry's `herdr` tool is the separate TUI, not Herdr Core.
 
 The installer copies the mod, checks it with your installed Herdr, and adds **⌘⇧G** (Command+Shift+G). It preserves existing settings and keybindings.
 
@@ -113,12 +109,12 @@ To build and install from this repository, use its mise toolchain:
 ```sh
 mise trust
 mise install
-mise exec -- pnpm run install:cli
+pnpm run install:cli
 ```
 
 Go is a build tool only. The CLI uses the Go standard library without third-party Go modules. The installer places one executable at `~/.local/bin/herdr-worktree-launcher`. Add `~/.local/bin` to your `PATH` if necessary. No npm dependency installation is required.
 
-Without mise, install Go 1.27.3 or newer to build the CLI. Keep `wt` on the runtime `PATH`; the launcher reports a clear error if it is missing. A mise-managed runtime can use `mise use --global worktrunk@latest`. Herdr supplies `hc` separately.
+Without mise, install Go 1.27.3 or newer to build the CLI, plus Worktrunk and [Herdr Core](https://github.com/herdrdev/herdr-core#install). Keep `wt` and `hc` on the runtime `PATH`; the launcher reports an error if either is missing.
 
 Standalone commands require **`HC_SOCKET` or `HC_SESSION`** to identify an already running local Herdr core. The desktop launcher obtains the running core's ID through `hc` and passes it explicitly to the CLI. The CLI checks that the connection still matches before creation or opening. You do not need to set these variables for the desktop launcher. Neither route starts a core.
 

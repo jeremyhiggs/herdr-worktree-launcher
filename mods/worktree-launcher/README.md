@@ -9,11 +9,11 @@ From the source repository, run:
 ```sh
 mise trust
 mise install
-mise exec -- pnpm run install:cli
-mise exec -- pnpm run install:mod
+pnpm run install:cli
+pnpm run install:mod
 ```
 
-The repository's `mise.toml` installs tested Go, Node, pnpm, Worktrunk, and validation tools. Install Git and Herdr separately. To make `wt` available outside this checkout, run `mise use --global worktrunk@latest` and activate mise in Herdr's shell environment.
+With mise activated, these pnpm commands use the declared Go, Node, pnpm, and Worktrunk tools. Herdr.app and your existing Herdr Core installation remain separate. Git is already available on macOS. For launches outside this checkout, `wt` and `hc` must also be on PATH there. Global defaults are optional if those commands already work.
 
 For an existing installation, run:
 
