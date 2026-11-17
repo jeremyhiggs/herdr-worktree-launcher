@@ -1,6 +1,6 @@
 # Validation report
 
-Last updated: 2026-11-12.
+Last updated: 2026-11-17.
 
 The launcher now uses a standalone Go CLI for repository and session operations. Earlier JavaScript backend measurements do not establish this implementation's performance.
 
@@ -9,10 +9,10 @@ The launcher now uses a standalone Go CLI for repository and session operations.
 | Check | Result | Coverage |
 | --- | --- | --- |
 | Go tests, race detector, and vet | Passed | Real Git and Worktrunk fixtures; discovery, naming, refs, fetch, preservation, partial failures, core context, hook suppression, and session matching |
-| Node tests | 100 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
+| Node tests | 104 passed | CLI commands, installation, JSON client, UI form, recovery, focus, keyboard routing, settings, and sample app isolation |
 | `scripts/lint.sh` | Passed | Biome/gofmt/shfmt formatting, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
-| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in 54 commits. pnpm audit found no vulnerabilities. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
-| `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 100 Node tests, and standalone CLI build |
+| `scripts/security.sh` | Passed locally | Gitleaks found no secrets in committed history. pnpm audit found no vulnerabilities. Govulncheck found no reachable or imported-package vulnerabilities; see the module-level advisory below. |
+| `scripts/validate.sh` | Passed locally | Formatting, lint, secret and dependency checks, Go race tests, 104 Node tests, and standalone CLI build |
 | Clean pnpm installs | Passed locally | Fresh unfrozen and frozen installs with pnpm 11.28.6; lockfile unchanged |
 | `scripts/package.sh` | Passed | Four CLI target archives, mod archive, checksums, extraction, and standalone installer smoke checks |
 | `scripts/test-package.sh` | Passed | All archive checksums, extracted CLI installation without `--binary`, packaged `pnpm run install:cli`, help with an empty runtime PATH, and packaged `pnpm run install:mod --help` |
@@ -39,7 +39,7 @@ Keyboard tests verify that Enter on Save, Browse, Refresh, Close, or action butt
 
 Discovery tests cover unreadable contents within a repository and unsupported layouts, including bare-repository worktrees and unsafe origin names. Those candidates cannot hide healthy projects. Unreadable directories outside repositories and real Git permission failures still fail discovery. Both sample scripts are tested with inherited Git location variables pointing to a separate disposable repository; its commit, index, and files remain unchanged.
 
-The GitHub workflows use the locally verified scripts. At `a9862df`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812231) passed Linux and macOS builds/tests, lint, and the security job. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/43150812270) also passed. This includes current-space defaults, dry-run, the `--execute` flag, and supply-chain hardening.
+The GitHub workflows use the locally verified scripts. At `ddadf16`, [CI](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/44040909184) passed Linux and macOS builds/tests, lint, and security checks. [Packages](https://github.com/jeremyhiggs/herdr-worktree-launcher/actions/runs/44040908987) also passed. Later local changes have no hosted result until pushed.
 
 ## Automated worktree scenarios
 
@@ -69,6 +69,7 @@ Creation and reuse tests use real Git and Worktrunk. Failure tests can substitut
 | Worktrunk project hooks are configured | Skip those hooks during launcher creation. | Go: `TestWorktrunkProjectHooksAreSkipped`. |
 | A custom worktree root is configured on the target machine | Use the config file or environment override, including a root outside home. Existing checkouts keep their folders after root changes. Invalid settings, changed roots, and symlinked children stop creation. | Go: `TestConfiguredWorktreeRootCreatesOutsideHomeAndReusesItsCheckout`, `TestWorktreeRootConfigurationErrorsStopBeforeCreation`, and `TestWorktreeRootChangesAndSymlinkedChildrenRefuseCreation`. |
 | Checkout location needs inference or an override | Infer from the current repository or subdirectory. Honor `--checkout`. Reject an unspecified checkout outside Git. | CLI: checkout-inference test. |
+| Inherited Git variables point at another repository | Honor the selected checkout for dry-run, Worktrunk creation, and session opening. Preserve the other repository's HEAD, index, status, and worktree list. Clear Git's repository-local variables only for Git/Worktrunk subprocesses; retain Herdr selectors and global Git settings. | Go: `TestExplicitCheckoutIgnoresInheritedGitContext`, `TestGitEnvironmentMatchesGitLocalVariables`. |
 | UI opens from a local or remote space | Resolve only its current project and branch first; do not scan the project root before preselection. Leave the branch name empty. | [UI controls](../../tests/worktree-launcher-ui.test.mjs): active-space preselection and gated picker tests. Client: machine routing/root assertions. Go: scoped selection API validation. |
 | Live terminal folder differs from the space's starting folder | Prefer the focused terminal's live checkout, then a terminal in the active tab, then the stored folder. Ignore unrelated spaces and inactive tabs. Capture context before asynchronous loading. | UI controls: live-terminal-checkout test on local and remote machines. Separate native sample checks a worktree tab inside its primary project's space. |
 | Checkout lookup or branch loading is slow | Keep form controls and submission disabled during initial selection, with Close and Esc available. Opening the project picker then scans once without blocking editing or resetting the selection. Cache results; reject late results from a previous machine/refresh or closed overlay. | UI controls: gated startup/picker and error/dismissal tests. Model: deferred scan, caching, error/retry and stale-result tests. Native sample: current-space scene asserts no project scan occurred. |
@@ -134,7 +135,7 @@ For only the model and recovery-record scenarios:
 node --test tests/worktree-launcher-model.test.mjs tests/worktree-launcher-journal.test.mjs
 ```
 
-The latest local run passed 100 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
+The latest local run passed 104 Node tests. A configured workflow is not evidence of a successful hosted run for an unpushed commit.
 
 Other automated coverage includes discovery filters, repository naming, remote-root configuration, program selection, installation, overlay controls, and isolated sample-app setup.
 

@@ -221,6 +221,84 @@ func (f fixture) core(t *testing.T) fixtureCore {
 	return state
 }
 
+func TestGitEnvironmentMatchesGitLocalVariables(t *testing.T) {
+	f := setup(t)
+	local := strings.Fields(f.git(t, "rev-parse", "--local-env-vars"))
+	keep := []string{"HC_SOCKET=fixture.sock", "HC_SESSION=custom", "GIT_CONFIG_GLOBAL=gitconfig", "GIT_SSH_COMMAND=ssh", "PATH=bin"}
+	env := slices.Clone(keep)
+	for _, key := range local {
+		env = append(env, key+"=foreign")
+	}
+	if got := withoutGitContext(env); !slices.Equal(got, keep) {
+		t.Fatalf("repository-local Git variables must be removed without changing other settings: %q", got)
+	}
+}
+
+func TestExplicitCheckoutIgnoresInheritedGitContext(t *testing.T) {
+	f := setup(t)
+	foreign := filepath.Join(f.root, "foreign")
+	if _, err := command(f.root, "git", "clone", "--quiet", f.repo, foreign); err != nil {
+		t.Fatal(err)
+	}
+	foreignGit := func(args ...string) string {
+		t.Helper()
+		out, err := git(foreign, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if err := os.WriteFile(filepath.Join(foreign, "staged.txt"), []byte("preserve index"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	foreignGit("add", "staged.txt")
+	before := foreignGit("status", "--porcelain")
+	head := foreignGit("rev-parse", "HEAD")
+	trees := foreignGit("worktree", "list", "--porcelain")
+	index := filepath.Join(foreign, ".git", "index")
+	indexBefore, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	context := map[string]string{
+		"GIT_DIR": filepath.Join(foreign, ".git"), "GIT_WORK_TREE": foreign,
+		"GIT_COMMON_DIR": filepath.Join(foreign, ".git"), "GIT_INDEX_FILE": index,
+		"GIT_OBJECT_DIRECTORY": filepath.Join(foreign, ".git", "objects"),
+	}
+	for key, value := range context {
+		t.Setenv(key, value)
+	}
+	plan, _, err := run([]string{"new", "feature/selected", "--checkout", f.repo, "--dry-run", "--json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := plan.(map[string]any); p["checkout"] != f.repo || p["project"] != f.repo {
+		t.Fatalf("explicit checkout was overridden: %+v", p)
+	}
+	opened, _, err := run([]string{"new", "feature/selected", "--checkout", f.repo, "--json"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := opened.(OpenResult); got.Path != filepath.Join(f.home, ".herdr", "worktrees", "sample", "feature-selected") {
+		t.Fatalf("wrong worktree opened: %+v", got)
+	}
+	if f.git(t, "branch", "--list", "feature/selected") == "" || f.git(t, "symbolic-ref", "HEAD") != "refs/heads/main" {
+		t.Fatal("requested repository did not retain its checkout and gain the new branch")
+	}
+	indexAfter, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreignGit("branch", "--list", "feature/selected") != "" || foreignGit("status", "--porcelain") != before || foreignGit("rev-parse", "HEAD") != head || foreignGit("worktree", "list", "--porcelain") != trees || !slices.Equal(indexAfter, indexBefore) {
+		t.Fatal("inherited Git context changed the foreign repository")
+	}
+	for key, value := range context {
+		if os.Getenv(key) != value {
+			t.Fatalf("launcher changed its inherited %s", key)
+		}
+	}
+}
+
 func TestMissingContextAndWorktrunkRefuseBeforeCreation(t *testing.T) {
 	f := setup(t)
 	r := f.prepare(t, "new", "refs/heads/main", "refused")

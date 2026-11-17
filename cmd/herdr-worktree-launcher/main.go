@@ -69,11 +69,30 @@ func uuid() string {
 func command(cwd, program string, args ...string) ([]byte, error) {
 	return commandTimeout(120*time.Second, cwd, program, args...)
 }
+
+func withoutGitContext(env []string) []string {
+	return slices.DeleteFunc(env, func(entry string) bool {
+		key, _, _ := strings.Cut(entry, "=")
+		// Repository-local variables from git rev-parse --local-env-vars must
+		// not override the checkout selected by the launcher.
+		switch key {
+		case "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+			"GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE",
+			"GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR":
+			return true
+		}
+		return false
+	})
+}
+
 func commandTimeout(timeout time.Duration, cwd, program string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Dir = cwd
+	if program == "git" || program == "wt" {
+		cmd.Env = withoutGitContext(cmd.Environ())
+	}
 	cmd.WaitDelay = 5 * time.Second
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
