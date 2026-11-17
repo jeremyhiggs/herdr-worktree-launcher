@@ -9,7 +9,7 @@ From the source repository, run:
 ```sh
 mise trust
 mise install
-mise exec -- ./scripts/install-cli.sh
+mise exec -- pnpm run install:cli
 mise exec -- pnpm run install:mod
 ```
 

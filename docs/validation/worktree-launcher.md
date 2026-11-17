@@ -125,7 +125,7 @@ CLI test fixtures preserve the selected `git` and `wt` executables in their rest
 Run the same tests locally:
 
 ```sh
-./scripts/test.sh
+pnpm test
 ```
 
 For only the model and recovery-record scenarios:

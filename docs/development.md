@@ -20,20 +20,20 @@ Mise accepts version prefixes and `latest`, but not `>=` tool-version ranges. Th
 
 ## Check changes
 
-The GitHub workflows use the same scripts as local development:
+Use the pnpm commands below. GitHub workflows call the same underlying scripts:
 
 | Command | Checks or output |
 | --- | --- |
-| `./scripts/build-cli.sh` | Standalone executable in `dist/` |
-| `./scripts/format.sh` | Format JavaScript, TypeScript, and JSON with Biome, Go with gofmt, and shell scripts with shfmt |
-| `./scripts/format.sh --check` | Reject formatting drift without changing files |
-| `./scripts/lint.sh` | Formatting checks, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
-| `./scripts/deps-check.sh` | pnpm audit at moderate severity or higher, then govulncheck for Go code |
-| `./scripts/security.sh` | Redacted Gitleaks scan of committed history, then dependency checks |
-| `./scripts/test.sh` | Go tests with the race detector, then all Node tests |
-| `./scripts/validate.sh` | Lint, security checks, tests, and the standalone CLI build |
-| `./scripts/package.sh` | Four CLI archives, a desktop mod archive, and SHA256SUMS in `dist/packages/` |
-| `./scripts/test-package.sh` | Verify archive checksums, install an extracted CLI, and run the packaged mod's install-script help |
+| `pnpm run build:cli` | Standalone executable in `dist/` |
+| `pnpm run format` | Format JavaScript, TypeScript, and JSON with Biome, Go with gofmt, and shell scripts with shfmt |
+| `pnpm run format:check` | Reject formatting drift without changing files |
+| `pnpm run lint` | Formatting checks, Biome lint, Go vet, JavaScript syntax, ShellCheck, and actionlint |
+| `pnpm run deps:check` | pnpm audit at moderate severity or higher, then govulncheck for Go code |
+| `pnpm run security` | Redacted Gitleaks scan of committed history, then dependency checks |
+| `pnpm test` | Go tests with the race detector, then all Node tests |
+| `pnpm run validate` | Lint, security checks, tests, and the standalone CLI build |
+| `pnpm run package` | Four CLI archives, a desktop mod archive, and SHA256SUMS in `dist/packages/` |
+| `pnpm run test:package` | Verify archive checksums, install an extracted CLI, and run the packaged mod's install-script help |
 
 Packaging supports `--output DIRECTORY`. It includes only distribution files; personal configuration, recovery records, generated API files, and screenshot fixtures are excluded.
 
@@ -48,12 +48,10 @@ Govulncheck fails for vulnerabilities reachable from this code; module-only advi
 For complete local validation, run:
 
 ```sh
-./scripts/validate.sh
+pnpm run validate
 ```
 
-The pnpm shortcuts are `pnpm run format`, `pnpm run format:check`, `pnpm run lint`, `pnpm run deps:check`, and `pnpm run validate`.
-
-Use `pnpm test` for both Go race tests and Node tests. Use `pnpm run test:js` for only the Node suite. `pnpm run build`, `pnpm run package`, and `pnpm run test:package` call the corresponding scripts.
+Use `pnpm run test:js` for only the Node suite. `pnpm run build` is an alias for `pnpm run build:cli`.
 
 ## pnpm policy
 
@@ -174,12 +172,12 @@ Keep installation, local commits, publishing, and release tagging as separate st
 
 The CLI uses the Go standard library and has no external Go modules. The desktop mod is a JSON client for this executable.
 
-Run `mise install` for the pinned Go and Worktrunk versions, then `./scripts/build-cli.sh`. The output is `dist/herdr-worktree-launcher`. It needs no Go or Node runtime. Runtime dependencies are `git`, `wt`, and `hc`.
+Run `mise install` for the pinned toolchain, then `pnpm run build:cli`. The output is `dist/herdr-worktree-launcher`. It needs no Go or Node runtime. Runtime dependencies are `git`, `wt`, and `hc`.
 
 For another platform, set Go's build variables:
 
 ```sh
-GOOS=linux GOARCH=amd64 ./scripts/build-cli.sh --output dist/herdr-worktree-launcher-linux-amd64
+GOOS=linux GOARCH=amd64 pnpm run build:cli --output dist/herdr-worktree-launcher-linux-amd64
 ```
 
 Build outputs are ignored. Node and pnpm remain development tools for the UI tests and mod installation. CLI tests build the actual Go executable and use real Git/Worktrunk with a core protocol fixture. Go tests cover Git safety and core session matching.

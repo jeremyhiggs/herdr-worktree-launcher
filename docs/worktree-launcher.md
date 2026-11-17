@@ -218,7 +218,7 @@ Closing the window does not roll back Git.
 
 ## Manual installation
 
-Install the standalone CLI first with `./scripts/install-cli.sh`, or use `--binary FILE` for a prebuilt executable. The mod copy needs no Node or pnpm. From the repository root, copy these files:
+Install the standalone CLI first with `pnpm run install:cli`, or add `--binary FILE` for a prebuilt executable. For CLI installation without Node or pnpm, see the [package guide](packages.md). The mod copy needs no Node or pnpm. From the repository root, copy these files:
 
 ```sh
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"

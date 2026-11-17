@@ -40,7 +40,7 @@ Download or clone this repository. In your terminal, change into its directory, 
 ```sh
 mise trust
 mise install
-mise exec -- ./scripts/install-cli.sh
+mise exec -- pnpm run install:cli
 mise exec -- pnpm run install:mod
 ```
 
@@ -113,10 +113,10 @@ To build and install from this repository, use its mise toolchain:
 ```sh
 mise trust
 mise install
-mise exec -- ./scripts/install-cli.sh
+mise exec -- pnpm run install:cli
 ```
 
-Go is a build tool only. The CLI uses the Go standard library without third-party Go modules. The script installs one executable at `~/.local/bin/herdr-worktree-launcher`. Add `~/.local/bin` to your `PATH` if necessary. You can also use `pnpm run install:cli`; no dependency installation is required.
+Go is a build tool only. The CLI uses the Go standard library without third-party Go modules. The installer places one executable at `~/.local/bin/herdr-worktree-launcher`. Add `~/.local/bin` to your `PATH` if necessary. No npm dependency installation is required.
 
 Without mise, install Go 1.27.3 or newer to build the CLI. Keep `wt` on the runtime `PATH`; the launcher reports a clear error if it is missing. A mise-managed runtime can use `mise use --global worktrunk@latest`. Herdr supplies `hc` separately.
 
@@ -127,12 +127,12 @@ The desktop UI delegates discovery, Git operations, program detection, and sessi
 To install an existing binary without build tools, run:
 
 ```sh
-./scripts/install-cli.sh --binary ./dist/herdr-worktree-launcher
+pnpm run install:cli --binary ./dist/herdr-worktree-launcher
 ```
 
-To build without installation, run `./scripts/build-cli.sh`. The output is `dist/herdr-worktree-launcher` for your platform.
+To build without installation, run `pnpm run build:cli`. The output is `dist/herdr-worktree-launcher` for your platform.
 
-To rebuild and update the installed command, run `./scripts/install-cli.sh` again. A downloaded package uses its bundled executable automatically. `--binary FILE` selects a different prebuilt executable when needed.
+To rebuild and update the installed command, run `pnpm run install:cli` again. A downloaded package uses its bundled executable automatically. `--binary FILE` selects a different prebuilt executable when needed. The [package guide](docs/packages.md) also provides installation without Node or pnpm.
 
 ### Choose the canonical checkout
 
@@ -402,7 +402,7 @@ The UI follows Herdr's light or dark theme, including system appearance when Her
 From an updated copy of this repository, run:
 
 ```sh
-./scripts/install-cli.sh
+pnpm run install:cli
 pnpm run install:mod
 ```
 
@@ -428,11 +428,11 @@ For contributors, see [development](docs/development.md) and the [validation rep
 
 The [scenario matrix](docs/validation/worktree-launcher.md#automated-worktree-scenarios) lists worktree and recovery tests, CI coverage, and separate native checks.
 
-Run `./scripts/validate.sh` for formatting, lint, secret and dependency checks, tests, and the CLI build. CI runs the same script on Linux and macOS. Run `./scripts/security.sh` for Gitleaks, pnpm audit, and Go vulnerability checks, or `./scripts/deps-check.sh` for dependency checks alone. The scanners are pinned development tools installed by `mise install`; the Go executable does not need them.
+Run `pnpm run validate` for formatting, lint, secret and dependency checks, tests, and the CLI build. CI runs the same underlying script on Linux and macOS. Run `pnpm run security` for Gitleaks, pnpm audit, and Go vulnerability checks, or `pnpm run deps:check` for dependency checks alone. The scanners are pinned development tools installed by `mise install`; the Go executable does not need them.
 
 GitHub workflows run these checks on pushes and pull requests, with weekly CI checks as well. All actions use full commit SHA pins. pnpm policy restricts dependency sources and build scripts, and delays new package releases for seven days. See [development](docs/development.md) for the policy and scanner coverage.
 
-Build packages with `./scripts/package.sh`. The Packages workflow uploads CLI and mod archives with checksums; see [package installation](docs/packages.md).
+Build packages with `pnpm run package`. The Packages workflow uploads CLI and mod archives with checksums; see [package installation](docs/packages.md).
 
 Screenshots use disposable sample projects in a separate Herdr installation. Only agents detected in that installation appear.
 
