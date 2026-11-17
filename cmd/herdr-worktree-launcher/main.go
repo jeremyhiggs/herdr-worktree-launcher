@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,12 +41,6 @@ type failure struct {
 
 func (e *failure) Error() string            { return e.Message }
 func fail(kind, message, hint string) error { return &failure{kind, message, hint} }
-func errText(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
 func clean(s string) bool {
 	return s != "" && !strings.ContainsAny(s, "\x00\r\n") && strings.IndexFunc(s, func(r rune) bool { return r < 32 || r == 127 }) < 0
 }
@@ -967,8 +962,7 @@ func inspect(r Request, recover bool) Result {
 	if r.Reuse {
 		return partial(fmt.Errorf("existing worktree is unavailable or changed at %s", r.Path))
 	}
-	branch, err := git(r.Project.Path, "show-ref", "--verify", "--quiet", "refs/heads/"+r.Name)
-	_ = branch
+	_, err = git(r.Project.Path, "show-ref", "--verify", "--quiet", "refs/heads/"+r.Name)
 	exists := err == nil
 	if err != nil {
 		var exit *exec.ExitError
@@ -1328,13 +1322,7 @@ func validateRemote(p Project, remote string) error {
 	if err != nil {
 		return err
 	}
-	valid := false
-	for _, name := range strings.Fields(text) {
-		if name == remote {
-			valid = true
-		}
-	}
-	if !valid {
+	if !slices.Contains(strings.Fields(text), remote) {
 		return errors.New("Select a configured Git remote.")
 	}
 	return nil
@@ -1374,7 +1362,6 @@ func api(in input) (any, error) {
 				rows = append(rows, map[string]string{"path": path, "label": entry.Name()})
 			}
 		}
-		sort.Slice(rows, func(i, j int) bool { return rows[i]["label"] < rows[j]["label"] })
 		if filepath.Dir(root) != root {
 			rows = append([]map[string]string{{"path": filepath.Dir(root), "label": ".. (Parent directory)"}}, rows...)
 		}
