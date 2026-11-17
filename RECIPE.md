@@ -75,7 +75,9 @@ All repository and session operations use the standalone Go executable, `herdr-w
 
 The CLI uses Git, Worktrunk's `wt`, and Herdr Core's `hc`. Worktrunk creates checkouts with project hooks disabled. The CLI starts terminals through the core, labels them with space and tab IDs, and detects matching live checkouts. The UI passes a verified core ID. Standalone CLI commands require `HC_SOCKET` or `HC_SESSION`. Neither route starts a core.
 
-Before installing the mod, install the CLI on each target machine. Follow the [README](README.md) or [package guide](docs/packages.md). Building the CLI requires Go. Its installed executable needs no Go or Node runtime. The supplied mod installer requires Node 24 or newer. pnpm is optional for that installer.
+Before installing the mod, install the CLI on each target machine. Follow the [README](README.md) or [package guide](docs/packages.md). The repository's `mise.toml` declares the source toolchain. Building the CLI requires Go. Its installed executable needs no Go or Node runtime. The supplied mod installer requires Node 24 or newer. pnpm is optional for that installer.
+
+Project-scoped mise tools apply only inside this checkout. A runtime Worktrunk installation must remain available outside it, such as through `mise use --global worktrunk@latest` with shell activation. Git, Herdr.app, and `hc` use separate installers.
 
 For a manual gallery installation:
 

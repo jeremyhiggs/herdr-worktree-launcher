@@ -18,6 +18,14 @@ No dependency installation is required. If you do not use pnpm, run `./scripts/i
 
 The executable needs Git, Worktrunk (`wt`), and Herdr Core (`hc`) on PATH. It needs no Go or Node runtime.
 
+With [mise](https://mise.jdx.dev/getting-started.html), install a current Worktrunk runtime globally:
+
+```sh
+mise use --global worktrunk@latest
+```
+
+Activate mise in the shell used by Herdr so `wt` remains available outside this package folder. Git and `hc` use their system or upstream installers. Mise's `herdr` registry entry installs the separate TUI, not `hc`.
+
 Run from an environment with `HC_SOCKET` or `HC_SESSION` identifying an already running core. Missing context or Worktrunk stops creation. The CLI never starts a default core.
 
 ```sh
@@ -36,6 +44,8 @@ With Node 24 or newer, pnpm 11.x, and `herdr-app` on PATH, run:
 ```sh
 pnpm run install:mod
 ```
+
+To obtain the installer tools through mise, run `mise use --global node@24 pnpm@11` first. These version prefixes allow newer patches within Node 24 and pnpm 11. The prebuilt mod needs no Go installation or validation tools.
 
 Run the same command again to update the mod. Saved roots and existing settings are preserved. The installer checks native loading before replacing installed code or settings and assigns Command+Shift+G. Use `--no-shortcut` to preserve a different binding.
 

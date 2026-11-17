@@ -1,8 +1,16 @@
 [tools]
+# Tested source-build and desktop-installer versions. `mise install` installs
+# these plus the development tools below. mise does not support >= ranges.
 go = "1.27.3"
-worktrunk = "0.81.0"
 node = "24.22.2"
 pnpm = "11.28.6"
+
+# Runtime dependency on each target machine. Git and Herdr Core (hc) use their
+# platform/upstream installers. A project tool is not a global PATH default;
+# users can choose a current runtime with `mise use --global worktrunk@latest`.
+worktrunk = "0.81.0"
+
+# Validation tools for development and CI; not needed by installed launchers.
 actionlint = "1.7.12"
 shellcheck = "0.11.0"
 shfmt = "3.14.1"

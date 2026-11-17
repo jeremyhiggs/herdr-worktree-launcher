@@ -4,14 +4,19 @@ For user instructions, see the [README](../README.md). The [validation report](v
 
 ## Set up
 
-Use Go and Worktrunk from `mise.toml`, plus Node 24 or newer and pnpm 11.x. The repository pins pnpm 11.28.6.
+`mise.toml` declares Go, Worktrunk, Node, pnpm, and all validation tools. Exact versions provide the same baseline locally and in CI.
 
 Install Git and zsh (already supplied on macOS), then install the pinned tools and development dependencies:
 
 ```sh
+mise trust
 mise install
-pnpm install
+mise exec -- pnpm install
 ```
+
+Activate mise in your shell, or prefix the commands below with `mise exec --`. Project tools apply inside this checkout. An installed launcher still needs Git, `wt`, and `hc` on PATH wherever it runs. The README describes global Worktrunk setup.
+
+Mise accepts version prefixes and `latest`, but not `>=` tool-version ranges. These pins are the tested development baseline. The mod installer accepts Node 24 or newer and pnpm 11.x. Git, zsh, Herdr.app, and `hc` use system or upstream installers.
 
 ## Check changes
 

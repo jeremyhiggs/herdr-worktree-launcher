@@ -7,9 +7,13 @@ A native Herdr overlay for Git worktrees on local and connected Linux or macOS m
 From the source repository, run:
 
 ```sh
-./scripts/install-cli.sh
-pnpm run install:mod
+mise trust
+mise install
+mise exec -- ./scripts/install-cli.sh
+mise exec -- pnpm run install:mod
 ```
+
+The repository's `mise.toml` installs tested Go, Node, pnpm, Worktrunk, and validation tools. Install Git and Herdr separately. To make `wt` available outside this checkout, run `mise use --global worktrunk@latest` and activate mise in Herdr's shell environment.
 
 For an existing installation, run:
 
