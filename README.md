@@ -6,6 +6,8 @@ Choose a project, select a branch, and open a shell or coding agent. Your primar
 
 Start with the [desktop installation](#install-the-desktop-launcher) and [first-worktree guide](#create-your-first-worktree), or use the [standalone CLI](#use-the-terminal-cli).
 
+For agents that install the gallery mod, the [recipe](RECIPE.md) describes the interface, required CLI, shortcut, and acceptance checks.
+
 ## Features
 
 | Feature | What you can do |
