@@ -1,1 +1,32 @@
-{"name":"personal-worktrees","private":true,"type":"module","scripts":{"test":"node --test tests/personal-worktrees-*.test.mjs"}}
+{
+  "name": "worktree-launcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "herdr-worktree-launcher": "dist/herdr-worktree-launcher"
+  },
+  "packageManager": "pnpm@11.28.6",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=11 <12"
+  },
+  "scripts": {
+    "install:mod": "node scripts/install-mod.mjs",
+    "build:cli": "./scripts/build-cli.sh",
+    "install:cli": "./scripts/install-cli.sh",
+    "build": "./scripts/build-cli.sh",
+    "format": "./scripts/format.sh",
+    "format:check": "./scripts/format.sh --check",
+    "lint": "./scripts/lint.sh",
+    "deps:check": "./scripts/deps-check.sh",
+    "package": "./scripts/package.sh",
+    "test:package": "./scripts/test-package.sh",
+    "security": "./scripts/security.sh",
+    "validate": "./scripts/validate.sh",
+    "test": "./scripts/test.sh",
+    "test:js": "node --test tests/worktree-launcher-*.test.mjs",
+    "test:app": "node scripts/test-app.mjs",
+    "screenshots": "node scripts/capture-screenshots.mjs"
+  }
+}

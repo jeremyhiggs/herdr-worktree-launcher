@@ -1,0 +1,44 @@
+Usage: herdr-worktree-launcher new|open BRANCH [--checkout PATH] [options]
+
+  new feature/name --checkout /code/project --base main
+  open origin/feature/name --checkout /code/project --fetch origin --execute codex
+  (no arguments)                  Prompt for checkout path, action, branch and program
+
+  --checkout PATH   Override the checkout inferred from the current directory
+  --base REF        Base branch for new (default: selected checkout's branch)
+  --fetch REMOTE    Fetch one configured remote before branch selection and wt
+  --execute NAME    shell, claude, pi, opencode or codex (default: shell)
+  --prompt TEXT     Initial message for the selected agent (requires --execute)
+  --dry-run         Validate and print the plan without changing Git or sessions
+  --json            Print session information as JSON
+  --attach          Attach foreground stdin to the new session (without --json)
+  --skill           Print agent instructions
+  --help            Print this help without checking dependencies
+  --version         Print version
+
+Requires git, Worktrunk's wt, and hc on PATH. Set HC_SOCKET or HC_SESSION to an
+already running local core. Missing context or an unavailable core fails before
+creation; this command never starts a core. Run on the machine with the checkout.
+
+The current directory selects the checkout unless --checkout overrides it.
+New branches default to that checkout's branch, including linked worktrees.
+For a detached checkout, supply --base. Worktrees are placed under
+~/.herdr/worktrees/<repository>/<branch-slug>; existing checkouts keep their path.
+Set worktree_root in ~/.config/herdr-worktree-launcher/config.json to change
+that root for UI and CLI operations. XDG_CONFIG_HOME changes the config directory.
+HERDR_WORKTREE_ROOT overrides the file. A custom root must already exist.
+Worktrunk owns creation. Backend calls use --no-hooks to skip Worktrunk project
+hooks. Run trusted setup manually afterwards. No files or branches are deleted.
+If terminal startup fails, the checkout is preserved; retry with open BRANCH.
+Fetch failure stops creation. Omit --fetch to use locally available refs.
+Opening a linked checkout also ensures a shell space for its primary checkout.
+
+Dry-run checks refs, names, paths, installed programs and runtime dependencies.
+It never fetches, invokes wt, or contacts hc. No running core or HC selector is
+required for a preview. With --fetch, it lists the planned fetch but validates
+current local refs; fetched branches and commits can differ in a real run.
+Use --dry-run --json for a machine-readable plan. Invalid plans exit nonzero.
+The dry-run flag applies to new/open commands, not API operations.
+
+JSON API: herdr-worktree-launcher api --request '{"operation":"context"}'
+Successful API responses are raw JSON; failures are {"error":{"kind","message","hint"}}.

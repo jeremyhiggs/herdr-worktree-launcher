@@ -1,0 +1,18 @@
+[tools]
+# Tested source-build and desktop-installer versions. `mise install` installs
+# these plus the development tools below. mise does not support >= ranges.
+go = "1.27.3"
+node = "24.22.2"
+pnpm = "11.28.6"
+
+# Runtime dependency on each target machine. `mise install` selects it inside
+# this checkout. A global default is optional for launches from other folders.
+worktrunk = "0.81.0"
+
+# Validation tools for development and CI; not needed by installed launchers.
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+shfmt = "3.14.1"
+biome = "2.6.5"
+gitleaks = "8.30.1"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"

@@ -1,0 +1,9 @@
+mods/worktree-launcher/config.json
+*.png
+!preview.png
+!docs/screenshots/*.png
+mods/worktree-launcher/gpui-kit.d.ts
+mods/worktree-launcher/jsconfig.json
+node_modules/
+.pnpm-store/
+dist/
